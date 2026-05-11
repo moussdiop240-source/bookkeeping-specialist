@@ -196,20 +196,30 @@ elif st.session_state.page == "📑 Financial Statements":
             st.table(pd.DataFrame(eq_map))
             st.metric("Total Equity", f"${15000 + net:,.2f}")
 
-# --- 9. PHASE: AI CFO CHAT (OLLAMA CONNECTION) ---
+# --- 9. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
-    st.title("💬 AI Financial Advisor")
+    st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
-    
-    if prompt := st.chat_input("Ask a financial question..."):
+
+    if prompt := st.chat_input("Ask about a transaction in the ledger..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
-        
+
         with st.chat_message("assistant"):
             try:
-                res = requests.post('http://localhost:11434/api/generate', 
-                    json={'model': 'llama3.2:1b', 'prompt': prompt, 'stream': False}, timeout=20)
+                ledger_summary = df.to_json(orient='records', indent=2) if not df.empty else "[]"
+                system_prompt = f"""You are a Senior Tax Auditor.
+STRICT RULE: You only have access to the ledger data provided below.
+1. If a user asks about a transaction NOT in the ledger, you MUST say 'I have no record of that expense.'
+2. Do not offer general financial advice unless it relates to a specific row in the data.
+3. Be concise and skeptical.
+
+Ledger Data (JSON):
+{ledger_summary}"""
+                full_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
+                res = requests.post('http://localhost:11434/api/generate',
+                    json={'model': 'llama3.2:latest', 'prompt': full_prompt, 'stream': False}, timeout=60)
                 ans = res.json()['response']
                 st.markdown(ans)
                 st.session_state.messages.append({"role": "assistant", "content": ans})
