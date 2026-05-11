@@ -1,0 +1,8 @@
+﻿Project: AI Bookkeeping Specialist
+Core File: maker.py
+Database Architecture: SQLite (located at clients/{client_name}/data/bookkeeping.db)
+Key Modules:
+  - Agentic Debate: IRS (IRC Sec 274) vs. GAAP (ASC 360)
+  - Financial Reporting: Risk flagging for expenses > $75
+  - AI CFO Chat: Local Llama 3.2 via Ollama API
+Critical State Guard: st.session_state (auth, active_client, page)
