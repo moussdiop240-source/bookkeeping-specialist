@@ -1,4 +1,5 @@
 ﻿import streamlit as st
+from PIL import Image, ImageDraw
 import pandas as pd
 import sqlite3
 import os
@@ -647,7 +648,19 @@ def _gate():
                    "Upgrade to unlock permanent access.")
 
 _init_vault()
-st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide", page_icon="📊")
+def _make_favicon() -> Image.Image:
+    img  = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([0, 0, 63, 63], radius=14, fill="#080D18")
+    draw.rounded_rectangle([8,  38, 17, 55], radius=2, fill="#0070F3")
+    draw.rounded_rectangle([22, 26, 31, 55], radius=2, fill="#0070F3")
+    draw.rounded_rectangle([36, 16, 45, 55], radius=2, fill="#00C896")
+    draw.rounded_rectangle([50, 8,  59, 55], radius=2, fill="#00C896")
+    draw.line([(13, 36), (27, 24), (41, 14), (55, 6)], fill="#00E5AD", width=3)
+    draw.ellipse([52, 3, 58, 9], fill="#00E5AD")
+    return img
+
+st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide", page_icon=_make_favicon())
 st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 # Force initialize all keys to prevent AttributeError
