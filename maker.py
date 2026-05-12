@@ -21,7 +21,7 @@ from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE
 VAULT        = "vault"
 REGISTRY     = os.path.join(VAULT, "registry.db")
 OLLAMA_BASE  = "http://localhost:11434"
-OLLAMA_MODEL = "llama3:8b"
+OLLAMA_MODEL = "llama3.2:1b"
 
 # --- PREMIUM THEME ---
 THEME_CSS = """<style>
@@ -405,12 +405,12 @@ def _ollama_model_ready(retries: int = 3, per_timeout: int = 10) -> str:
     if not any(OLLAMA_MODEL in m for m in installed):
         return "offline"
 
-    # Quick generation probe — timeout means model is still warming up
+    # Quick generation probe — allow up to 30s for cold model load
     try:
         probe = requests.post(
             f"{OLLAMA_BASE}/api/generate",
             json={"model": OLLAMA_MODEL, "prompt": "1+1=", "stream": False},
-            timeout=8,
+            timeout=30,
         )
         return "ready" if probe.status_code == 200 else "warming"
     except requests.exceptions.Timeout:
@@ -1177,7 +1177,7 @@ ollama pull {OLLAMA_MODEL}
                 res = requests.post(
                     f"{OLLAMA_BASE}/api/generate",
                     json={"model": OLLAMA_MODEL, "prompt": full_prompt, "stream": False},
-                    timeout=60,
+                    timeout=90,
                 )
                 ans = res.json()['response']
                 st.markdown(ans)
