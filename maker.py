@@ -8,6 +8,7 @@ import requests
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import time
 try:
     from fpdf import FPDF
     FPDF_AVAILABLE = True
@@ -368,9 +369,24 @@ def _renew_license(cid):
     conn.commit()
     conn.close()
 
-def _ollama_online() -> bool:
+def _ollama_online(retries: int = 3, per_timeout: int = 10) -> bool:
+    """Try up to `retries` times before declaring Ollama offline."""
+    for attempt in range(retries):
+        try:
+            r = requests.get('http://localhost:11434/api/tags', timeout=per_timeout)
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
+        if attempt < retries - 1:
+            time.sleep(2)
+    return False
+
+@st.cache_data(ttl=30)
+def _ollama_status() -> bool:
+    """Cached 30-second sidebar status check (single fast probe)."""
     try:
-        r = requests.get('http://localhost:11434/api/tags', timeout=3)
+        r = requests.get('http://localhost:11434/api/tags', timeout=5)
         return r.status_code == 200
     except Exception:
         return False
@@ -548,6 +564,18 @@ with st.sidebar:
         f"<span style='background:{_bg}; color:{_fg}; border:1px solid {_fg}33; "
         f"border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600; "
         f"letter-spacing:0.05em;'>{_ico} {_txt}</span>",
+        unsafe_allow_html=True
+    )
+    # Ollama connection status light
+    _ai_up = _ollama_status()
+    _dot   = "#00C896" if _ai_up else "#EF4444"
+    _label = "AI Engine Online" if _ai_up else "AI Engine Offline"
+    st.markdown(
+        f"<div style='margin-top:10px; font-size:0.72rem;'>"
+        f"<span style='display:inline-block; width:8px; height:8px; border-radius:50%; "
+        f"background:{_dot}; margin-right:6px; vertical-align:middle; "
+        f"box-shadow:0 0 6px {_dot};'></span>"
+        f"<span style='color:{_dot}; font-weight:600;'>{_label}</span></div>",
         unsafe_allow_html=True
     )
     st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
@@ -1028,8 +1056,8 @@ elif st.session_state.page == "💬 AI CFO Chat":
         st.chat_input("Select a client first to unlock the auditor...", disabled=True)
         st.stop()
 
-    # Guard 2: Ollama must be reachable
-    if not _ollama_online():
+    # Guard 2: Ollama must be reachable (3 retries × 10s timeout each)
+    if not _ollama_online(retries=3, per_timeout=10):
         st.error("AI Engine Offline — Ollama is not running.")
         st.markdown("""
 **Follow these steps to start the AI engine:**
