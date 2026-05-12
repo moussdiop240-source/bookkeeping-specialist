@@ -368,6 +368,13 @@ def _renew_license(cid):
     conn.commit()
     conn.close()
 
+def _ollama_online() -> bool:
+    try:
+        r = requests.get('http://localhost:11434/api/tags', timeout=3)
+        return r.status_code == 200
+    except Exception:
+        return False
+
 def _gate():
     """Block expired/hard-stopped clients. Show trial banner for active trials."""
     today = datetime.today().date()
@@ -1014,32 +1021,82 @@ elif st.session_state.page == "📄 Quick Start Guide":
 elif st.session_state.page == "💬 AI CFO Chat":
     st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
     _gate()
+
+    # Guard 1: Client must be selected before the auditor can work
+    if not st.session_state.active_uuid:
+        st.info("📂 Please select a client in the sidebar to begin the audit.")
+        st.chat_input("Select a client first to unlock the auditor...", disabled=True)
+        st.stop()
+
+    # Guard 2: Ollama must be reachable
+    if not _ollama_online():
+        st.error("AI Engine Offline — Ollama is not running.")
+        st.markdown("""
+**Follow these steps to start the AI engine:**
+
+**Step 1:** Open a new Terminal (PowerShell or Command Prompt)
+
+**Step 2:** Run the following command:
+```
+ollama serve
+```
+
+**Step 3:** Wait until you see: `Listening on 127.0.0.1:11434`
+
+**Step 4:** Come back here and refresh the page.
+        """)
+        st.stop()
+
+    # Guard 3: Auto-inject client context when client loads or switches
+    if st.session_state.get('_chat_for_client') != st.session_state.active_uuid:
+        st.session_state.messages = []
+        st.session_state['_chat_for_client'] = st.session_state.active_uuid
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                f"I'm your AI Tax Auditor. I'm reviewing the books for "
+                f"**{st.session_state.active_name}**. "
+                f"I only have access to the ledger data on file — ask me anything about it."
+            )
+        })
+
+    # Chat display
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]): st.markdown(msg["content"])
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
     if prompt := st.chat_input("Ask about a transaction in the ledger..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
         with st.chat_message("assistant"):
             try:
                 ledger_summary = df.to_json(orient='records', indent=2) if not df.empty else "[]"
-                system_prompt = f"""You are a Senior Tax Auditor.
-STRICT RULE: You only have access to the ledger data provided below.
-1. If a user asks about a transaction NOT in the ledger, you MUST say 'I have no record of that expense.'
-2. Do not offer general financial advice unless it relates to a specific row in the data.
-3. Be concise and skeptical.
-
-Ledger Data (JSON):
-{ledger_summary}"""
+                system_prompt = (
+                    f"You are a Senior Tax Auditor reviewing the books for client: "
+                    f"{st.session_state.active_name}.\n"
+                    f"STRICT RULES:\n"
+                    f"1. You only have access to the ledger data provided below.\n"
+                    f"2. If asked about a transaction NOT in the ledger, say: "
+                    f"'I have no record of that expense.'\n"
+                    f"3. Do not offer general financial advice unless it relates to "
+                    f"a specific row in the data.\n"
+                    f"4. Be concise and skeptical.\n"
+                    f"5. Always refer to the client by name: {st.session_state.active_name}.\n\n"
+                    f"Ledger Data (JSON):\n{ledger_summary}"
+                )
                 full_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
-                res = requests.post('http://localhost:11434/api/generate',
-                    json={'model': 'llama3.2:latest', 'prompt': full_prompt, 'stream': False}, timeout=60)
+                res = requests.post(
+                    'http://localhost:11434/api/generate',
+                    json={'model': 'llama3.2:latest', 'prompt': full_prompt, 'stream': False},
+                    timeout=60
+                )
                 ans = res.json()['response']
                 st.markdown(ans)
                 st.session_state.messages.append({"role": "assistant", "content": ans})
-            except:
-                st.error("Ollama offline. Run 'ollama serve' in your terminal.")
+            except Exception as e:
+                st.error(f"Ollama error — {e}")
 
 # --- 10. REMAINING PHASES ---
 elif st.session_state.page == "📥 Ingestion":
