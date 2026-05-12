@@ -16,3 +16,9 @@ MONTHLY_FEE = 49.99    # monthly renewal fee
 # Set to None to disable the hard stop.
 HARD_STOP_DATE = None
 # HARD_STOP_DATE = "2026-06-01"
+
+# License key signing secret.
+# IMPORTANT: change this before distributing the software.
+# Use a long random string — e.g. from: python -c "import secrets; print(secrets.token_hex(32))"
+# Keep this secret. Anyone who knows it can generate valid keys.
+LICENSE_SECRET = "change-me-run-python-c-import-secrets-print-secrets-token-hex-32"

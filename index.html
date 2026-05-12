@@ -1317,22 +1317,48 @@
 
 <script>
   // Waitlist form
-  function submitWaitlist(e) {
-    e.preventDefault();
-    const form   = document.getElementById('waitlist-form');
-    const email  = form.querySelector('[name="email"]').value;
-    const first  = form.querySelector('[name="first_name"]').value;
-    const last   = form.querySelector('[name="last_name"]').value;
-    const company= form.querySelector('[name="company"]').value;
-    const role   = form.querySelector('[name="role"]').value;
-    const msg    = form.querySelector('[name="message"]').value;
+  // To enable Formspree: sign up free at https://formspree.io, create a form,
+  // and replace FORMSPREE_ENDPOINT below with your endpoint (e.g. https://formspree.io/f/xyzabc).
+  const FORMSPREE_ENDPOINT = "";  // leave empty to fall back to mailto
 
-    // mailto fallback — opens default mail client with pre-filled data
+  async function submitWaitlist(e) {
+    e.preventDefault();
+    const form    = document.getElementById('waitlist-form');
+    const btn     = form.querySelector('.form-submit');
+    const email   = form.querySelector('[name="email"]').value;
+    const first   = form.querySelector('[name="first_name"]').value;
+    const last    = form.querySelector('[name="last_name"]').value;
+    const company = form.querySelector('[name="company"]').value;
+    const role    = form.querySelector('[name="role"]').value;
+    const msg     = form.querySelector('[name="message"]').value;
+
+    btn.textContent = "Submitting…";
+    btn.disabled = true;
+
+    if (FORMSPREE_ENDPOINT) {
+      try {
+        const res = await fetch(FORMSPREE_ENDPOINT, {
+          method: "POST",
+          headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ first_name: first, last_name: last, email, company, role, message: msg })
+        });
+        if (!res.ok) throw new Error("Formspree error");
+      } catch (_) {
+        // Silent fallback — still show success; entry captured in mailto below
+      }
+    }
+
+    // mailto fallback — ensures submission reaches inbox even without Formspree
     const subject = encodeURIComponent(`Waitlist Request — ${first} ${last}`);
-    const body = encodeURIComponent(
+    const body    = encodeURIComponent(
       `Name: ${first} ${last}\nEmail: ${email}\nFirm: ${company}\nRole: ${role}\n\n${msg}`
     );
-    window.location.href = `mailto:moustaphaleye.diop@gmail.com?subject=${subject}&body=${body}`;
+    const mailLink = document.createElement("a");
+    mailLink.href  = `mailto:moustaphaleye.diop@gmail.com?subject=${subject}&body=${body}`;
+    mailLink.style.display = "none";
+    document.body.appendChild(mailLink);
+    mailLink.click();
+    document.body.removeChild(mailLink);
 
     // Show success state
     document.getElementById('success-email').textContent = email;

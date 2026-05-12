@@ -28,7 +28,8 @@ try:
 except ImportError:
     STRIPE_AVAILABLE = False
 
-from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE
+from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE, LICENSE_SECRET
+from license_utils import verify_key
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
 VAULT        = "vault"
@@ -1181,7 +1182,7 @@ elif st.session_state.page == "💳 Subscription":
             key_in = st.text_input("Enter license key to activate", key="setup_key",
                                    placeholder="Enter your license key")
             if st.button("Activate Now"):
-                if key_in.strip().upper() == "SETUP-299":
+                if verify_key(LICENSE_SECRET, key_in, "SETUP"):
                     _activate_license(cid)
                     st.session_state.license = _get_license(cid)
                     st.success("✅ Account activated — 30 days of full access unlocked.")
@@ -1197,7 +1198,7 @@ elif st.session_state.page == "💳 Subscription":
         renew_key = st.text_input("Enter renewal key", key="renew_key",
                                   placeholder="Enter your renewal key")
         if st.button("Renew Subscription"):
-            if renew_key.strip().upper() == "RENEW-4999":
+            if verify_key(LICENSE_SECRET, renew_key, "RENEW"):
                 _renew_license(cid)
                 st.session_state.license = _get_license(cid)
                 st.success("✅ Subscription renewed — 30 days added.")
