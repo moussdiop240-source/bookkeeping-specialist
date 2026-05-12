@@ -2169,19 +2169,271 @@ ollama pull {OLLAMA_MODEL}
 
 # --- 10. REMAINING PHASES ---
 elif st.session_state.page == "📥 Ingestion":
-    st.title(f"📥 Ingestion: {st.session_state.active_name}")
+    import re, hashlib
+
+    # ── OFX/QFX parser ──────────────────────────────────────────
+    def _parse_ofx(raw: str) -> pd.DataFrame:
+        """Extract STMTTRN blocks from OFX/QFX text into a DataFrame."""
+        rows = []
+        for block in re.findall(r"<STMTTRN>(.*?)</STMTTRN>", raw, re.S | re.I):
+            def _tag(t):
+                m = re.search(rf"<{t}>(.*?)(?:<|$)", block, re.I)
+                return m.group(1).strip() if m else ""
+            dtraw = _tag("DTPOSTED") or _tag("DTUSER")
+            try:
+                date_str = f"{dtraw[:4]}-{dtraw[4:6]}-{dtraw[6:8]}"
+            except Exception:
+                date_str = ""
+            rows.append({
+                "date":        date_str,
+                "description": _tag("MEMO") or _tag("NAME"),
+                "amount":      float(_tag("TRNAMT") or 0),
+                "ref":         _tag("FITID"),
+            })
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+    # ── Column auto-detector ─────────────────────────────────────
+    def _detect_cols(cols):
+        """Return best-guess mapping {role: col_name} for date/desc/amount/debit/credit."""
+        mapping = {}
+        date_kw  = ["date", "posted", "trans", "dt", "day", "time"]
+        desc_kw  = ["desc", "memo", "narr", "payee", "detail", "note", "merchant", "name", "ref"]
+        amt_kw   = ["amount", "amt", "value", "total", "sum"]
+        deb_kw   = ["debit", "dr", "withdrawal", "out", "charge"]
+        cred_kw  = ["credit", "cr", "deposit", "in"]
+
+        def best(kws):
+            for kw in kws:
+                for c in cols:
+                    if kw in c.lower():
+                        return c
+            return None
+
+        mapping["date"]   = best(date_kw)
+        mapping["desc"]   = best(desc_kw)
+        mapping["amount"] = best(amt_kw)
+        mapping["debit"]  = best(deb_kw)
+        mapping["credit"] = best(cred_kw)
+        return mapping
+
+    # ── Row hasher for dedup ─────────────────────────────────────
+    def _row_hash(date, desc, amount):
+        raw = f"{str(date).strip()}|{str(desc).strip()}|{float(amount):.4f}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def _existing_hashes(cid):
+        path = get_ledger_path(cid)
+        if not os.path.exists(path):
+            return set()
+        try:
+            ldf = pd.read_sql_query("SELECT * FROM ledger", sqlite3.connect(path))
+            ldf.columns = [c.lower() for c in ldf.columns]
+            if not {"date", "description", "amount"}.issubset(ldf.columns):
+                return set()
+            return {_row_hash(r["date"], r["description"], r["amount"])
+                    for _, r in ldf.iterrows()}
+        except Exception:
+            return set()
+
+    # ── Page UI ──────────────────────────────────────────────────
+    st.title(f"📥 Bank Statement Import: {st.session_state.active_name}")
+    st.caption("Supports CSV, Excel, OFX, and QFX — auto-detects columns, removes duplicates, and AI-categorizes on import.")
     _gate()
-    up = st.file_uploader("Upload Ledger (Excel or CSV)", type=['xlsx', 'csv'])
-    if up and st.button("🚀 Sync"):
-        if up.name.endswith('.csv'):
-            ingested = pd.read_csv(up)
+
+    up = st.file_uploader(
+        "Drop your bank statement here",
+        type=["csv", "xlsx", "xls", "ofx", "qfx"],
+        help="Export from any bank as CSV or OFX/QFX (Quicken format)."
+    )
+
+    if up:
+        fname = up.name.lower()
+
+        # Parse file
+        try:
+            if fname.endswith((".ofx", ".qfx")):
+                raw = up.read().decode("utf-8", errors="replace")
+                parsed = _parse_ofx(raw)
+                if parsed.empty:
+                    st.error("No transactions found in OFX/QFX file. Check the file format.")
+                    st.stop()
+                parsed.columns = [c.lower() for c in parsed.columns]
+                st.success(f"OFX parsed — {len(parsed)} transactions found.")
+                ofx_mode = True
+            elif fname.endswith(".csv"):
+                parsed = pd.read_csv(up)
+                parsed.columns = [c.lower().strip() for c in parsed.columns]
+                ofx_mode = False
+            else:
+                parsed = pd.read_excel(up)
+                parsed.columns = [c.lower().strip() for c in parsed.columns]
+                ofx_mode = False
+        except Exception as e:
+            st.error(f"Failed to read file: {e}")
+            st.stop()
+
+        st.write(f"**{len(parsed)} rows detected** — raw preview:")
+        st.dataframe(parsed.head(5), use_container_width=True)
+        st.divider()
+
+        # ── Column Mapping ───────────────────────────────────────
+        if ofx_mode:
+            date_col = "date"
+            desc_col = "description"
+            amt_col  = "amount"
+            deb_col  = None
+            cred_col = None
         else:
-            ingested = pd.read_excel(up)
-        ingested.columns = [c.lower() for c in ingested.columns]
-        db_path = get_ledger_path(st.session_state.active_uuid)
-        ingested.to_sql('ledger', sqlite3.connect(db_path), if_exists='replace', index=False)
-        st.success(f"Database updated — {len(ingested)} rows ingested.")
-        st.rerun()
+            st.subheader("Column Mapping")
+            st.caption("Auto-detected below — adjust if needed.")
+            auto = _detect_cols(list(parsed.columns))
+            col_options = ["— none —"] + list(parsed.columns)
+
+            m1, m2, m3 = st.columns(3)
+            m4, m5     = st.columns(2)
+
+            def _pick(label, auto_val, key, cols=col_options):
+                default = cols.index(auto_val) if auto_val in cols else 0
+                return st.selectbox(label, cols, index=default, key=key)
+
+            with m1: date_col = _pick("Date column",        auto.get("date"),   "map_date")
+            with m2: desc_col = _pick("Description column", auto.get("desc"),   "map_desc")
+            with m3: amt_col  = _pick("Amount column",      auto.get("amount"), "map_amt")
+            with m4: deb_col  = _pick("Debit column (opt)", auto.get("debit"),  "map_deb")
+            with m5: cred_col = _pick("Credit column (opt)",auto.get("credit"), "map_cred")
+
+            if date_col == "— none —": date_col = None
+            if desc_col == "— none —": desc_col = None
+            if amt_col  == "— none —": amt_col  = None
+            if deb_col  == "— none —": deb_col  = None
+            if cred_col == "— none —": cred_col = None
+
+        st.divider()
+
+        # ── Build normalised rows ────────────────────────────────
+        normed = []
+        if ofx_mode:
+            for _, r in parsed.iterrows():
+                normed.append({
+                    "date":        r.get("date", ""),
+                    "description": r.get("description", ""),
+                    "amount":      abs(float(r.get("amount", 0))),
+                    "category":    "Uncategorized",
+                })
+        else:
+            if not date_col and not desc_col and not amt_col and not deb_col:
+                st.warning("Map at least Date, Description, and one amount column to continue.")
+                st.stop()
+            for _, r in parsed.iterrows():
+                date_val = str(r[date_col]).strip() if date_col else ""
+                desc_val = str(r[desc_col]).strip() if desc_col else ""
+                # Amount resolution: prefer explicit debit/credit cols
+                if deb_col or cred_col:
+                    dv = float(r[deb_col])  if deb_col  and pd.notna(r[deb_col])  else 0.0
+                    cv = float(r[cred_col]) if cred_col and pd.notna(r[cred_col]) else 0.0
+                    amt_val = abs(dv) if dv != 0 else abs(cv)
+                elif amt_col:
+                    amt_val = abs(float(r[amt_col])) if pd.notna(r[amt_col]) else 0.0
+                else:
+                    amt_val = 0.0
+                normed.append({
+                    "date":        date_val,
+                    "description": desc_val,
+                    "amount":      amt_val,
+                    "category":    "Uncategorized",
+                })
+
+        normed_df = pd.DataFrame(normed)
+
+        # ── Duplicate detection ──────────────────────────────────
+        existing = _existing_hashes(st.session_state.active_uuid)
+        normed_df["_hash"]  = normed_df.apply(
+            lambda r: _row_hash(r["date"], r["description"], r["amount"]), axis=1)
+        normed_df["_is_dup"] = normed_df["_hash"].isin(existing)
+
+        new_rows  = normed_df[~normed_df["_is_dup"]]
+        dup_rows  = normed_df[ normed_df["_is_dup"]]
+
+        st.subheader("Import Preview")
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Total Rows",      len(normed_df))
+        d2.metric("New (to import)", len(new_rows),  delta=None)
+        d3.metric("Duplicates Skipped", len(dup_rows),
+                  delta="already in ledger" if len(dup_rows) else None,
+                  delta_color="off")
+
+        if not new_rows.empty:
+            st.dataframe(
+                new_rows[["date", "description", "amount"]].reset_index(drop=True),
+                use_container_width=True
+            )
+        else:
+            st.warning("All rows are duplicates — nothing new to import.")
+            st.stop()
+
+        if len(dup_rows) > 0:
+            with st.expander(f"Show {len(dup_rows)} duplicate row(s)"):
+                st.dataframe(dup_rows[["date", "description", "amount"]].reset_index(drop=True),
+                             use_container_width=True)
+
+        st.divider()
+
+        # ── Options ─────────────────────────────────────────────
+        st.subheader("Import Options")
+        o1, o2 = st.columns(2)
+        with o1:
+            import_mode = st.radio(
+                "Write mode",
+                ["Append to existing ledger", "Replace entire ledger"],
+                help="Append adds only new rows. Replace wipes and rewrites the full ledger."
+            )
+        with o2:
+            auto_cat = st.checkbox(
+                "🤖 AI auto-categorize on import",
+                value=True,
+                help="Runs each transaction through the local AI to assign a GAAP category. "
+                     "Adds ~2s per transaction."
+            )
+
+        st.divider()
+
+        # ── Commit ───────────────────────────────────────────────
+        if st.button("✅ Commit Import", type="primary", use_container_width=True):
+            to_write = new_rows.drop(columns=["_hash", "_is_dup"]).reset_index(drop=True)
+
+            if auto_cat:
+                st.info(f"AI categorizing {len(to_write)} rows...")
+                bar   = st.progress(0)
+                cats  = []
+                total = len(to_write)
+                for i, row in to_write.iterrows():
+                    cats.append(get_ai_category(row["description"]))
+                    bar.progress(min(1.0, (i + 1) / total))
+                to_write["category"] = cats
+
+            db_path = get_ledger_path(st.session_state.active_uuid)
+            conn    = sqlite3.connect(db_path)
+
+            if import_mode.startswith("Replace"):
+                to_write.to_sql("ledger", conn, if_exists="replace", index=False)
+            else:
+                # Append mode: load existing, concatenate, dedup by hash, write back
+                try:
+                    existing_df = pd.read_sql_query("SELECT * FROM ledger", conn)
+                    existing_df.columns = [c.lower() for c in existing_df.columns]
+                except Exception:
+                    existing_df = pd.DataFrame()
+                merged = pd.concat([existing_df, to_write], ignore_index=True)
+                merged.to_sql("ledger", conn, if_exists="replace", index=False)
+
+            conn.close()
+            cats_note = " and categorized" if auto_cat else ""
+            st.success(
+                f"✅ Imported{cats_note} **{len(to_write)} new transactions** "
+                f"({len(dup_rows)} duplicates skipped)."
+            )
+            st.balloons()
+            st.rerun()
 
 elif st.session_state.page == "💰 Revenue":
     st.title("💰 Revenue Input")
