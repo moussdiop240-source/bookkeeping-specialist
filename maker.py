@@ -933,6 +933,7 @@ with st.sidebar:
         "📑 Financial Statements",
         "📈 CFO Dashboard",
         "📄 PDF Reports",
+        "📋 Tax Readiness",
         "📧 Email Delivery",
         "💬 AI CFO Chat"
     ])
@@ -1852,6 +1853,392 @@ elif st.session_state.page == "📄 PDF Reports":
             st.success(f"'{fname}' ready — 7 sections, {recon_score}% compliance score.")
             st.session_state['last_pdf_bytes'] = pdf_bytes
             st.session_state['last_pdf_fname']  = fname
+
+# --- 11. PHASE: TAX READINESS — SCHEDULE C/E GENERATOR ---
+elif st.session_state.page == "📋 Tax Readiness":
+    st.title("📋 Tax Readiness Report")
+    st.caption("IRS Schedule C (sole proprietor) · Schedule E (rental) · UNICAP §263A · Year-End Checklist — 2026 Edition")
+    _gate()
+
+    if not FPDF_AVAILABLE:
+        st.error("fpdf2 is not installed. Run: `pip install fpdf2` then restart.")
+    elif df.empty:
+        st.info("Ingest client data first — go to 📥 Ingestion to import a bank statement.")
+    else:
+        cid    = st.session_state.active_uuid
+        client = st.session_state.active_name
+        rev    = _get_revenue(cid)
+        exp    = df["amount"].sum()
+        net    = rev - exp
+
+        # ── Schedule C category mapper ─────────────────────────────
+        # Maps ledger category keywords → IRS Schedule C Part II line labels
+        SCHED_C_MAP = {
+            "Advertising":          ["advertising", "marketing", "promotion", "ads", "seo"],
+            "Car & Truck":          ["auto", "car", "truck", "vehicle", "mileage", "gas", "fuel", "parking"],
+            "Commissions & Fees":   ["commission", "referral", "finder", "brokerage"],
+            "Contract Labor":       ["contractor", "freelance", "1099", "outsource", "subcontract"],
+            "Insurance":            ["insurance", "premium", "liability", "coverage", "policy"],
+            "Interest":             ["interest", "loan interest", "mortgage"],
+            "Office Expense":       ["office", "supplies", "stationery", "postage", "shipping", "fedex", "ups"],
+            "Rent / Lease":         ["rent", "lease", "co-working", "coworking"],
+            "Repairs & Maint.":     ["repair", "maintenance", "fix", "service", "cleaning"],
+            "Taxes & Licenses":     ["tax", "license", "permit", "registration", "dmv"],
+            "Travel":               ["travel", "airline", "delta", "united", "hotel", "airbnb", "flight", "uber", "lyft"],
+            "Meals (50% limit)":    ["meal", "dining", "restaurant", "food", "starbucks", "coffee", "lunch", "dinner"],
+            "Software / Tech":      ["software", "saas", "subscription", "microsoft", "adobe", "google", "amazon", "quickbooks", "cloud"],
+            "Professional Fees":    ["legal", "attorney", "accountant", "cpa", "consultant", "accounting"],
+            "Wages":                ["wage", "payroll", "salary", "employee", "w-2"],
+            "Other Expenses":       [],
+        }
+
+        UNICAP_KW = {"inventory", "production", "manufacturing", "cogs", "materials",
+                     "supplies", "resale", "freight", "packaging"}
+
+        def _classify_row(row):
+            cat  = str(row.get("category", "")).lower()
+            desc = str(row.get("description", "")).lower()
+            text = cat + " " + desc
+            for line, kws in SCHED_C_MAP.items():
+                if line == "Other Expenses":
+                    continue
+                if any(kw in text for kw in kws):
+                    return line
+            return "Other Expenses"
+
+        df_work = df.copy()
+        df_work["sched_c_line"] = df_work.apply(_classify_row, axis=1)
+
+        # Group by Schedule C line
+        sched_c = df_work.groupby("sched_c_line")["amount"].sum().reindex(
+            list(SCHED_C_MAP.keys()), fill_value=0.0).reset_index()
+        sched_c.columns = ["IRS Schedule C Line", "Gross Amount ($)"]
+
+        # Apply 50% meals limit
+        meals_idx = sched_c["IRS Schedule C Line"] == "Meals (50% limit)"
+        sched_c.loc[meals_idx, "Deductible ($)"] = sched_c.loc[meals_idx, "Gross Amount ($)"] * 0.50
+        sched_c["Deductible ($)"] = sched_c["Deductible ($)"].fillna(sched_c["Gross Amount ($)"])
+
+        # UNICAP flag: production-category rows over $1,000
+        cat_col = "category" if "category" in df_work.columns else None
+        unicap_rows = df_work[df_work.apply(
+            lambda r: any(k in str(r.get("category", "")).lower() for k in UNICAP_KW)
+                      and r["amount"] > 1000, axis=1
+        )] if cat_col else pd.DataFrame()
+        unicap_adj = unicap_rows["amount"].sum() * 0.10  # 10% uniform cap estimate
+
+        total_deductible = sched_c["Deductible ($)"].sum() - unicap_adj
+
+        # ── Tabs ─────────────────────────────────────────────────
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Schedule C Worksheet",
+            "📐 Deduction Limits",
+            "📋 Year-End Checklist",
+            "📥 Generate PDF"
+        ])
+
+        with tab1:
+            st.subheader("IRS Schedule C — Part II: Expenses (Sole Proprietor)")
+            t1, t2, t3 = st.columns(3)
+            t1.metric("Gross Revenue",      f"${rev:,.2f}")
+            t2.metric("Total Expenses",     f"${exp:,.2f}")
+            t3.metric("Net Profit / Loss",  f"${net:,.2f}",
+                      delta_color="normal" if net >= 0 else "inverse")
+            st.divider()
+
+            disp = sched_c.copy()
+            disp["Gross Amount ($)"]  = disp["Gross Amount ($)"].apply(lambda x: f"${x:,.2f}")
+            disp["Deductible ($)"]    = disp["Deductible ($)"].apply(lambda x: f"${x:,.2f}")
+            disp["Notes"] = disp["IRS Schedule C Line"].apply(
+                lambda l: "50% limit applied" if l == "Meals (50% limit)" else ""
+            )
+            # Only show lines with amounts
+            active = sched_c[sched_c["Gross Amount ($)"] > 0].index
+            st.dataframe(disp.loc[active], use_container_width=True, hide_index=True)
+
+            if not unicap_rows.empty:
+                st.warning(
+                    f"**UNICAP §263A Adjustment:** {len(unicap_rows)} production-category "
+                    f"transactions totalling ${unicap_rows['amount'].sum():,.2f} — estimated "
+                    f"10% uniform capitalization adjustment = **${unicap_adj:,.2f}** subtracted "
+                    f"from deductible expenses."
+                )
+
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Deductions (before UNICAP)", f"${sched_c['Deductible ($)'].sum():,.2f}")
+            c2.metric("UNICAP §263A Adjustment",          f"-${unicap_adj:,.2f}")
+            c3.metric("Net Deductible Expenses",           f"${total_deductible:,.2f}")
+
+        with tab2:
+            st.subheader("Deduction Limits & IRS Rules — 2026")
+            limits = [
+                ("Meals & Entertainment",  "50% deductible",
+                 f"${sched_c.loc[meals_idx, 'Gross Amount ($)'].sum():,.2f}",
+                 f"${sched_c.loc[meals_idx, 'Deductible ($)'].sum():,.2f}",
+                 "IRC §274(n)"),
+                ("Vehicle Expenses",       "Standard mileage OR actual; not both",
+                 f"${sched_c.loc[sched_c['IRS Schedule C Line']=='Car & Truck','Gross Amount ($)'].sum():,.2f}",
+                 "—", "IRC §179 / Rev. Proc. 2025-1"),
+                ("Home Office",            "Exclusive use required; simplified $5/sqft",
+                 "Not calculated", "—", "IRC §280A"),
+                ("Section 179 Expensing",  "Up to $1,220,000 (2026 limit)",
+                 "—", "Up to $1,220,000", "IRC §179"),
+                ("Bonus Depreciation",     "60% for 2026 (phasing down)",
+                 "—", "60% of qualifying assets", "IRC §168(k)"),
+                ("UNICAP §263A",           "Applies if gross receipts >$31M",
+                 f"${unicap_rows['amount'].sum():,.2f}" if not unicap_rows.empty else "$0.00",
+                 f"-${unicap_adj:,.2f}", "IRC §263A"),
+                ("Pass-Through Deduction", "20% of QBI for pass-through entities",
+                 f"${net:,.2f} net income",
+                 f"${max(0, net * 0.20):,.2f} potential deduction", "IRC §199A"),
+            ]
+            for name, rule, gross, ded, code in limits:
+                with st.expander(f"**{name}** — {code}"):
+                    lc1, lc2, lc3 = st.columns(3)
+                    lc1.markdown(f"**Rule:** {rule}")
+                    lc2.markdown(f"**Your amount:** {gross}")
+                    lc3.markdown(f"**Deductible:** {ded}")
+
+        with tab3:
+            st.subheader("Year-End Tax Readiness Checklist")
+            st.caption("Check off each item before sending to your CPA. "
+                       "This checklist is not saved — screenshot or download the PDF.")
+
+            categories = {
+                "Income Documentation": [
+                    "All 1099-NEC / 1099-K received from clients",
+                    "Bank statements reconciled to revenue entries",
+                    "PayPal / Stripe / Square transaction reports downloaded",
+                    "Foreign income reported (FBAR if >$10K foreign accounts)",
+                ],
+                "Expense Substantiation": [
+                    f"Receipts collected for all {len(df[df['amount'] > 75])} transactions over $75 (IRS §274)",
+                    "Written business purpose documented for each flagged expense",
+                    "Mileage log completed (date, destination, business purpose, miles)",
+                    "Home office square footage measured and documented",
+                ],
+                "Payroll & Contractors": [
+                    "W-2s issued to all employees by Jan 31",
+                    "1099-NECs issued to all contractors paid ≥$600",
+                    "941 payroll tax deposits reconciled",
+                    "State W-3 / 1096 transmittal filed",
+                ],
+                "Asset & Depreciation": [
+                    "Fixed asset additions and disposals listed",
+                    "Section 179 elections reviewed (up to $1,220,000 in 2026)",
+                    "Bonus depreciation elections documented (60% for 2026)",
+                    "Prior-year depreciation schedule updated",
+                ],
+                "Compliance": [
+                    f"UNICAP §263A reviewed — {len(unicap_rows)} potential production-cost items",
+                    "Estimated quarterly tax payments confirmed (Q1-Q4)",
+                    "State sales tax returns filed for nexus states",
+                    "Retirement contributions maximized (SEP-IRA, Solo 401k)",
+                ],
+            }
+
+            all_checks = {}
+            for section, items in categories.items():
+                st.markdown(f"**{section}**")
+                for item in items:
+                    key = f"chk_{hash(item)}"
+                    all_checks[item] = st.checkbox(item, key=key)
+                st.divider()
+
+            done  = sum(all_checks.values())
+            total = len(all_checks)
+            pct   = int(done / total * 100) if total else 0
+            st.metric("Readiness Score", f"{pct}% ({done}/{total} items complete)")
+            st.progress(pct / 100)
+
+        with tab4:
+            st.subheader("Generate Tax Readiness PDF")
+            st.caption("Full Schedule C worksheet + deduction limits + year-end checklist — "
+                       "hand this to your CPA.")
+
+            schedule_type = st.radio(
+                "Primary schedule",
+                ["Schedule C (Sole Proprietor / LLC)", "Schedule E (Rental Income)"],
+                horizontal=True
+            )
+
+            if st.button("📥 Generate Tax PDF", type="primary", use_container_width=True):
+                tax_pdf = _BookkeepingPDF(client_name=client)
+                tax_pdf.set_auto_page_break(auto=True, margin=18)
+
+                def _tsec(title):
+                    tax_pdf.set_fill_color(0, 30, 20)
+                    tax_pdf.set_text_color(0, 200, 150)
+                    tax_pdf.set_font("Helvetica", "B", 12)
+                    tax_pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT", fill=True)
+                    tax_pdf.set_text_color(30, 30, 30)
+                    tax_pdf.ln(2)
+
+                def _tkv(label, val, bold_val=False):
+                    tax_pdf.set_font("Helvetica", "", 10)
+                    tax_pdf.cell(110, 7, label)
+                    tax_pdf.set_font("Helvetica", "B" if bold_val else "", 10)
+                    tax_pdf.cell(80, 7, str(val), new_x="LMARGIN", new_y="NEXT")
+
+                def _ttbl(*cols_widths):
+                    tax_pdf.set_fill_color(220, 220, 220)
+                    tax_pdf.set_font("Helvetica", "B", 9)
+                    for hdr, w in cols_widths:
+                        tax_pdf.cell(w, 8, hdr, border=1, fill=True)
+                    tax_pdf.ln()
+
+                # Cover
+                tax_pdf.add_page()
+                tax_pdf.set_fill_color(0, 30, 20)
+                tax_pdf.rect(0, 0, 210, 55, "F")
+                tax_pdf.set_y(14)
+                tax_pdf.set_font("Helvetica", "B", 20)
+                tax_pdf.set_text_color(0, 200, 150)
+                tax_pdf.cell(0, 12, "Tax Readiness Report", new_x="LMARGIN", new_y="NEXT", align="C")
+                tax_pdf.set_font("Helvetica", "B", 11)
+                tax_pdf.set_text_color(200, 230, 220)
+                tax_pdf.cell(0, 7, f"IRS {schedule_type.split('(')[0].strip()} — 2026 Tax Year",
+                             new_x="LMARGIN", new_y="NEXT", align="C")
+                tax_pdf.set_y(68)
+                tax_pdf.set_text_color(30, 30, 30)
+                tax_pdf.set_font("Helvetica", "B", 13)
+                tax_pdf.cell(0, 10, f"Client: {client}", new_x="LMARGIN", new_y="NEXT", align="C")
+                tax_pdf.set_font("Helvetica", "", 10)
+                tax_pdf.cell(0, 7, f"Prepared: {datetime.today().strftime('%B %d, %Y')}",
+                             new_x="LMARGIN", new_y="NEXT", align="C")
+                tax_pdf.ln(6)
+                tax_pdf.set_font("Helvetica", "I", 8)
+                tax_pdf.set_text_color(120, 120, 120)
+                tax_pdf.multi_cell(0, 5,
+                    "Prepared under 2026 IRS standards. This worksheet is an aid for tax preparation "
+                    "and does not constitute a filed return. Consult a licensed CPA before filing.",
+                    align="C")
+
+                # Part I — Income
+                tax_pdf.add_page()
+                _tsec("Part I — Gross Income")
+                _tkv("Gross Revenue (client-reported):", f"${rev:,.2f}", True)
+                _tkv("Cost of Goods Sold (COGS):", "$0.00")
+                _tkv("Gross Profit:", f"${rev:,.2f}", True)
+                tax_pdf.ln(4)
+
+                # Part II — Expenses
+                _tsec("Part II — Expenses (IRS Schedule C)")
+                _ttbl(("IRS Schedule C Line", 100), ("Gross ($)", 45), ("Deductible ($)", 45))
+                tax_pdf.set_font("Helvetica", "", 9)
+                active_lines = sched_c[sched_c["Gross Amount ($)"] > 0]
+                for _, row in active_lines.iterrows():
+                    note = " *" if row["IRS Schedule C Line"] == "Meals (50% limit)" else ""
+                    tax_pdf.cell(100, 7, row["IRS Schedule C Line"] + note, border=1)
+                    tax_pdf.cell(45,  7, f"${row['Gross Amount ($)']:,.2f}",  border=1)
+                    tax_pdf.cell(45,  7, f"${row['Deductible ($)']:,.2f}",   border=1,
+                                 new_x="LMARGIN", new_y="NEXT")
+                tax_pdf.set_font("Helvetica", "I", 8)
+                tax_pdf.cell(0, 6, "* Meals subject to 50% deductibility limit (IRC §274(n))",
+                             new_x="LMARGIN", new_y="NEXT")
+                tax_pdf.ln(3)
+                tax_pdf.set_font("Helvetica", "B", 10)
+                tax_pdf.cell(100, 8, "Total Deductions (before UNICAP adj.)", border=1)
+                tax_pdf.cell(45,  8, f"${sched_c['Gross Amount ($)'].sum():,.2f}", border=1)
+                tax_pdf.cell(45,  8, f"${sched_c['Deductible ($)'].sum():,.2f}",  border=1,
+                             new_x="LMARGIN", new_y="NEXT")
+                if not unicap_rows.empty:
+                    tax_pdf.set_font("Helvetica", "B", 10)
+                    tax_pdf.cell(100, 8, "UNICAP §263A Adjustment (est. 10%)", border=1)
+                    tax_pdf.cell(45,  8, f"${unicap_rows['amount'].sum():,.2f}", border=1)
+                    tax_pdf.cell(45,  8, f"-${unicap_adj:,.2f}",                border=1,
+                                 new_x="LMARGIN", new_y="NEXT")
+                tax_pdf.set_font("Helvetica", "B", 11)
+                tax_pdf.set_fill_color(200, 240, 220)
+                tax_pdf.cell(100, 9, "Net Deductible Expenses", border=1, fill=True)
+                tax_pdf.cell(45,  9, "", border=1, fill=True)
+                tax_pdf.cell(45,  9, f"${total_deductible:,.2f}", border=1, fill=True,
+                             new_x="LMARGIN", new_y="NEXT")
+
+                # Net profit
+                tax_pdf.ln(4)
+                _tsec("Net Profit / (Loss)")
+                _tkv("Gross Revenue:", f"${rev:,.2f}")
+                _tkv("Net Deductible Expenses:", f"${total_deductible:,.2f}")
+                net_taxable = rev - total_deductible
+                _tkv("Net Taxable Income:", f"${net_taxable:,.2f}", True)
+                qbi = max(0, net_taxable * 0.20)
+                _tkv("§199A Pass-Through Deduction (est. 20% of QBI):", f"${qbi:,.2f}")
+                _tkv("Taxable Income After §199A:", f"${max(0, net_taxable - qbi):,.2f}", True)
+
+                # Deduction Limits page
+                tax_pdf.add_page()
+                _tsec("Key Deduction Limits — 2026 IRS Rules")
+                limits_pdf = [
+                    ("Meals & Entertainment (IRC §274(n))", "50% of actual cost",
+                     f"${sched_c.loc[meals_idx,'Gross Amount ($)'].sum():,.2f}",
+                     f"${sched_c.loc[meals_idx,'Deductible ($)'].sum():,.2f}"),
+                    ("Section 179 Expensing (IRC §179)",    "Up to $1,220,000",
+                     "—", "Review asset list"),
+                    ("Bonus Depreciation (IRC §168(k))",    "60% for 2026",
+                     "—", "60% of new assets"),
+                    ("UNICAP §263A Threshold",               ">$31M triggers full UNICAP",
+                     f"${unicap_rows['amount'].sum():,.2f}" if not unicap_rows.empty else "$0.00",
+                     f"-${unicap_adj:,.2f}"),
+                    ("§199A Pass-Through Deduction",         "20% of QBI (income limits apply)",
+                     f"${net_taxable:,.2f}", f"${qbi:,.2f}"),
+                    ("SE Tax Deduction (IRC §164(f))",       "50% of self-employment tax",
+                     "~15.3% of net profit", "Calculated on Schedule SE"),
+                ]
+                _ttbl(("Rule", 70), ("Limit", 50), ("Your Amount", 40), ("Deductible", 30))
+                tax_pdf.set_font("Helvetica", "", 8)
+                for rule, lim, amt, ded in limits_pdf:
+                    tax_pdf.cell(70, 7, rule[:38],  border=1)
+                    tax_pdf.cell(50, 7, lim[:28],   border=1)
+                    tax_pdf.cell(40, 7, amt[:20],   border=1)
+                    tax_pdf.cell(30, 7, ded[:18],   border=1, new_x="LMARGIN", new_y="NEXT")
+
+                # Checklist page
+                tax_pdf.add_page()
+                _tsec("Year-End Tax Readiness Checklist")
+                for section, items in categories.items():
+                    tax_pdf.set_font("Helvetica", "B", 10)
+                    tax_pdf.cell(0, 8, section, new_x="LMARGIN", new_y="NEXT")
+                    tax_pdf.set_font("Helvetica", "", 9)
+                    for item in items:
+                        tax_pdf.cell(8, 6, "[ ]")
+                        tax_pdf.multi_cell(0, 6, item)
+                    tax_pdf.ln(2)
+
+                # IRS flag detail
+                tax_pdf.add_page()
+                _tsec(f"IRS §274 Substantiation — {len(df[df['amount']>75])} Receipts Required")
+                flagged = df[df["amount"] > 75].copy()
+                _ttbl(("Description", 90), ("Date", 28), ("Amount ($)", 30), ("Action", 42))
+                tax_pdf.set_font("Helvetica", "", 8)
+                for _, row in flagged.head(30).iterrows():
+                    tax_pdf.cell(90, 6, str(row.get("description",""))[:44], border=1)
+                    tax_pdf.cell(28, 6, str(row.get("date",""))[:10],         border=1)
+                    tax_pdf.cell(30, 6, f"${row['amount']:,.2f}",              border=1)
+                    tax_pdf.cell(42, 6, "Collect receipt + purpose",           border=1,
+                                 new_x="LMARGIN", new_y="NEXT")
+                if len(flagged) > 30:
+                    tax_pdf.set_font("Helvetica", "I", 8)
+                    tax_pdf.cell(0, 6,
+                        f"... and {len(flagged)-30} more — see full ledger export.",
+                        new_x="LMARGIN", new_y="NEXT")
+
+                tax_bytes = bytes(tax_pdf.output())
+                tax_fname = f"{client}_TaxReadiness_{datetime.today().strftime('%Y%m%d')}.pdf"
+                st.download_button(
+                    label="📥 Download Tax Readiness PDF",
+                    data=tax_bytes,
+                    file_name=tax_fname,
+                    mime="application/pdf",
+                    key="tax_pdf_dl"
+                )
+                st.success(
+                    f"Tax PDF ready — Schedule C worksheet, deduction limits, "
+                    f"year-end checklist, and {len(flagged)} receipt action items."
+                )
+                st.session_state["last_pdf_bytes"] = tax_bytes
+                st.session_state["last_pdf_fname"]  = tax_fname
 
 # --- 13. PHASE: EMAIL DELIVERY ---
 elif st.session_state.page == "📧 Email Delivery":
