@@ -2,6 +2,8 @@
 import pandas as pd
 import sqlite3
 import os
+import shutil
+import uuid as _uuid
 import requests
 import plotly.express as px
 import plotly.graph_objects as go
@@ -13,13 +15,91 @@ except ImportError:
     FPDF_AVAILABLE = False
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
-os.makedirs('clients', exist_ok=True)
+VAULT    = "vault"
+REGISTRY = os.path.join(VAULT, "registry.db")
+
+def _init_vault():
+    os.makedirs(VAULT, exist_ok=True)
+    conn = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS clients (
+            uuid    TEXT PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE,
+            email   TEXT DEFAULT '',
+            created TEXT NOT NULL,
+            status  TEXT DEFAULT 'active'
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def _create_client(name, email=""):
+    cid = str(_uuid.uuid4())
+    os.makedirs(os.path.join(VAULT, cid), exist_ok=True)
+    conn = sqlite3.connect(REGISTRY)
+    try:
+        conn.execute(
+            "INSERT INTO clients (uuid, name, email, created) VALUES (?,?,?,?)",
+            (cid, name.strip(), email.strip(), datetime.today().isoformat())
+        )
+        conn.commit()
+        return cid, None
+    except sqlite3.IntegrityError:
+        return None, f"Client '{name}' already exists."
+    finally:
+        conn.close()
+
+def _list_clients():
+    _init_vault()
+    conn = sqlite3.connect(REGISTRY)
+    try:
+        df = pd.read_sql_query(
+            "SELECT uuid, name, email, created, status FROM clients ORDER BY created DESC", conn)
+    except Exception:
+        df = pd.DataFrame(columns=["uuid", "name", "email", "created", "status"])
+    conn.close()
+    return df
+
+def get_ledger_path(cid):
+    return os.path.join(VAULT, cid, "ledger.db")
+
+def _migrate_legacy():
+    """Import existing clients/{name}/data/bookkeeping.db into the vault."""
+    legacy = "clients"
+    if not os.path.isdir(legacy):
+        return 0
+    count = 0
+    for name in os.listdir(legacy):
+        old = os.path.join(legacy, name, "data", "bookkeeping.db")
+        if not os.path.exists(old):
+            continue
+        conn = sqlite3.connect(REGISTRY)
+        row  = conn.execute("SELECT uuid FROM clients WHERE name=?", (name,)).fetchone()
+        conn.close()
+        cid  = row[0] if row else _create_client(name)[0]
+        if not cid:
+            continue
+        new = get_ledger_path(cid)
+        if not os.path.exists(new):
+            shutil.copy2(old, new)
+            c2 = sqlite3.connect(new)
+            tables = {r[0] for r in c2.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if "bookkeeping" in tables and "ledger" not in tables:
+                c2.execute("ALTER TABLE bookkeeping RENAME TO ledger")
+                c2.commit()
+            c2.close()
+            count += 1
+    return count
+
+_init_vault()
 st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide")
 
 # Force initialize all keys to prevent AttributeError
 defaults = {
     'auth': False,
-    'active_client': "None",
+    'active_uuid': "",
+    'active_name': "No Client",
     'messages': [],
     'page': "🏢 Client Management"
 }
@@ -42,15 +122,15 @@ if not st.session_state.auth:
 
 # --- 3. DATA PERSISTENCE ENGINE ---
 def load_db():
-    client = st.session_state.active_client
-    if client == "None":
+    cid = st.session_state.get("active_uuid", "")
+    if not cid:
         return pd.DataFrame()
-    db_path = f"clients/{client}/data/bookkeeping.db"
-    if not os.path.exists(db_path):
+    path = get_ledger_path(cid)
+    if not os.path.exists(path):
         return pd.DataFrame()
     try:
-        conn = sqlite3.connect(db_path)
-        df = pd.read_sql_query("SELECT * FROM ledger", conn)
+        conn = sqlite3.connect(path)
+        df   = pd.read_sql_query("SELECT * FROM ledger", conn)
         df.columns = [c.lower() for c in df.columns]
         conn.close()
         return df
@@ -71,7 +151,7 @@ df = load_db()
 
 # --- 4. NAVIGATION CONTROL ---
 with st.sidebar:
-    st.title(f"👤 {st.session_state.active_client}")
+    st.title(f"👤 {st.session_state.active_name}")
     if st.button("🚪 Logout"):
         st.session_state.auth = False
         st.rerun()
@@ -88,24 +168,57 @@ with st.sidebar:
         "💬 AI CFO Chat"
     ])
 
-# --- 5. PHASE: CLIENT MANAGEMENT (The State Anchor) ---
+# --- 5. PHASE: CLIENT MANAGEMENT (Multi-Client Vault) ---
 if st.session_state.page == "🏢 Client Management":
-    st.title("🏢 Client Workspace Management")
-    col1, col2 = st.columns(2)
-    with col1:
-        new_client = st.text_input("Create New Profile")
-        if st.button("➕ Create") and new_client:
-            os.makedirs(f"clients/{new_client}/data", exist_ok=True)
-            st.success(f"Profile '{new_client}' ready.")
-    with col2:
-        existing = [d for d in os.listdir('clients') if os.path.isdir(os.path.join('clients', d))]
-        choice = st.selectbox("Select Active Workspace", ["None"] + existing)
-        if st.button("✅ Load Client Data"):
-            st.session_state.active_client = choice
+    st.title("🏢 Client Vault")
+
+    # --- Create new client ---
+    with st.expander("➕ Create New Client Profile", expanded=False):
+        c1, c2 = st.columns(2)
+        new_name  = c1.text_input("Client Name")
+        new_email = c2.text_input("Contact Email (optional)")
+        if st.button("Create Profile") and new_name:
+            cid, err = _create_client(new_name, new_email)
+            if err:
+                st.error(err)
+            else:
+                st.success(f"Vault created — UUID: `{cid}`")
+                st.rerun()
+
+    st.divider()
+
+    # --- Migrate legacy data ---
+    with st.expander("🔄 Migrate Legacy clients/ Data", expanded=False):
+        st.caption("Imports existing clients/{name}/data/bookkeeping.db into the vault.")
+        if st.button("Run Migration"):
+            n = _migrate_legacy()
+            st.success(f"Migrated {n} client(s) into the vault.")
+            st.rerun()
+
+    st.divider()
+
+    # --- Client registry table ---
+    registry_df = _list_clients()
+    if registry_df.empty:
+        st.info("No clients yet. Create one above or run migration.")
+    else:
+        st.subheader("Active Client Registry")
+        st.dataframe(
+            registry_df[["name", "email", "created", "status"]],
+            use_container_width=True
+        )
+
+        # Load a client into session
+        names  = registry_df["name"].tolist()
+        choice = st.selectbox("Select Client Workspace", names)
+        if st.button("✅ Load Client"):
+            row = registry_df[registry_df["name"] == choice].iloc[0]
+            st.session_state.active_uuid = row["uuid"]
+            st.session_state.active_name = row["name"]
             st.rerun()
 
 # --- PHASE: GLOBAL CLIENT CHECK ---
-elif st.session_state.active_client == "None":
+elif not st.session_state.active_uuid:
     st.warning("⚠️ Access Restricted: Select a client in 'Client Management' to see data.")
 
 # --- 6. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
@@ -455,7 +568,7 @@ Ledger Data (JSON):
 
 # --- 10. REMAINING PHASES ---
 elif st.session_state.page == "📥 Ingestion":
-    st.title(f"📥 Ingestion: {st.session_state.active_client}")
+    st.title(f"📥 Ingestion: {st.session_state.active_name}")
     up = st.file_uploader("Upload Ledger (Excel or CSV)", type=['xlsx', 'csv'])
     if up and st.button("🚀 Sync"):
         if up.name.endswith('.csv'):
@@ -463,7 +576,7 @@ elif st.session_state.page == "📥 Ingestion":
         else:
             ingested = pd.read_excel(up)
         ingested.columns = [c.lower() for c in ingested.columns]
-        db_path = f"clients/{st.session_state.active_client}/data/bookkeeping.db"
+        db_path = get_ledger_path(st.session_state.active_uuid)
         ingested.to_sql('ledger', sqlite3.connect(db_path), if_exists='replace', index=False)
         st.success(f"Database updated — {len(ingested)} rows ingested.")
         st.rerun()
@@ -479,7 +592,7 @@ elif st.session_state.page == "🏷️ AI Categorization":
         st.caption(f"{len(needs_cat)} of {len(df)} rows pending categorization.")
         st.dataframe(df, use_container_width=True)
         if st.button("🚀 Run Magic Categorization"):
-            db_path = f"clients/{st.session_state.active_client}/data/bookkeeping.db"
+            db_path = get_ledger_path(st.session_state.active_uuid)
             bar = st.progress(0)
             status = st.empty()
             total = len(needs_cat)
