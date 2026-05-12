@@ -3,6 +3,8 @@ import pandas as pd
 import sqlite3
 import os
 import requests
+import plotly.express as px
+import plotly.graph_objects as go
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
 os.makedirs('clients', exist_ok=True)
@@ -69,12 +71,13 @@ with st.sidebar:
         st.rerun()
     
     st.session_state.page = st.radio("PIPELINE PHASES", [
-        "🏢 Client Management", 
-        "📥 Ingestion", 
+        "🏢 Client Management",
+        "📥 Ingestion",
         "🏷️ AI Categorization",
-        "🤖 Agentic Debate", 
-        "📊 Financial Reporting", 
-        "📑 Financial Statements", 
+        "🤖 Agentic Debate",
+        "📊 Financial Reporting",
+        "📑 Financial Statements",
+        "📈 CFO Dashboard",
         "💬 AI CFO Chat"
     ])
 
@@ -196,7 +199,84 @@ elif st.session_state.page == "📑 Financial Statements":
             st.table(pd.DataFrame(eq_map))
             st.metric("Total Equity", f"${15000 + net:,.2f}")
 
-# --- 9. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
+# --- 9. PHASE: CFO DASHBOARD ---
+elif st.session_state.page == "📈 CFO Dashboard":
+    st.title("📈 CFO Dashboard")
+    if df.empty:
+        st.info("No ledger data found. Ingest data to populate the dashboard.")
+    else:
+        rev = 35000.0
+        exp = df['amount'].sum()
+        net = rev - exp
+        burn_rate = exp / max(len(df['date'].unique() if 'date' in df.columns else [1]), 1)
+
+        # --- KPI Row ---
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total Revenue", f"${rev:,.2f}")
+        k2.metric("Total Expenses", f"${exp:,.2f}")
+        k3.metric("Net Income", f"${net:,.2f}", delta=f"${net - rev * 0.15:,.2f} vs 15% margin target")
+        k4.metric("Avg Burn / Entry", f"${burn_rate:,.2f}")
+
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+
+        # --- Burn Rate Trend (cumulative spend over time) ---
+        with col_left:
+            st.subheader("Burn Rate Trend")
+            if 'date' in df.columns:
+                trend = df.copy()
+                trend['date'] = pd.to_datetime(trend['date'], errors='coerce')
+                trend = trend.dropna(subset=['date']).sort_values('date')
+                trend['cumulative'] = trend['amount'].cumsum()
+                fig_trend = px.area(
+                    trend, x='date', y='cumulative',
+                    labels={'cumulative': 'Cumulative Spend ($)', 'date': 'Date'},
+                    color_discrete_sequence=['#EF553B']
+                )
+                fig_trend.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=300)
+                st.plotly_chart(fig_trend, use_container_width=True)
+            else:
+                st.info("No date column found in ledger.")
+
+        # --- Spend by Category (donut) ---
+        with col_right:
+            st.subheader("Spend by Category")
+            if 'category' in df.columns:
+                cat_df = df.groupby('category')['amount'].sum().reset_index()
+                fig_donut = px.pie(
+                    cat_df, names='category', values='amount',
+                    hole=0.45, color_discrete_sequence=px.colors.qualitative.Set2
+                )
+                fig_donut.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=300)
+                st.plotly_chart(fig_donut, use_container_width=True)
+            else:
+                st.info("Run AI Categorization first to see category breakdown.")
+
+        st.divider()
+
+        # --- Revenue vs Expenses Waterfall ---
+        st.subheader("Revenue vs. Expenses — Waterfall")
+        fig_wf = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "total"],
+            x=["Revenue", "Expenses", "Net Income"],
+            y=[rev, -exp, 0],
+            connector={"line": {"color": "rgb(63, 63, 63)"}},
+            decreasing={"marker": {"color": "#EF553B"}},
+            increasing={"marker": {"color": "#00CC96"}},
+            totals={"marker": {"color": "#636EFA"}}
+        ))
+        fig_wf.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=320)
+        st.plotly_chart(fig_wf, use_container_width=True)
+
+        # --- Top 10 Expenses Table ---
+        st.subheader("Top Expenses")
+        top = df.nlargest(10, 'amount')[['date', 'description', 'amount', 'category']] if 'category' in df.columns \
+              else df.nlargest(10, 'amount')[['date', 'description', 'amount']]
+        st.dataframe(top.style.format({'amount': '${:,.2f}'}), use_container_width=True)
+
+# --- 10. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
     st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
     for msg in st.session_state.messages:
