@@ -386,6 +386,110 @@ if FPDF_AVAILABLE:
                 align="C"
             )
 
+def _get_portfolio_stats() -> pd.DataFrame:
+    """Aggregate health metrics for every client in the registry."""
+    clients_df = _list_clients()
+    if clients_df.empty:
+        return pd.DataFrame()
+
+    rows = []
+    today = datetime.today().date()
+    conn_reg = sqlite3.connect(REGISTRY)
+
+    for _, cl in clients_df.iterrows():
+        cid  = cl["uuid"]
+        name = cl["name"]
+
+        # License
+        lic_row = conn_reg.execute(
+            "SELECT plan, setup_paid, expires FROM licenses WHERE uuid=?", (cid,)
+        ).fetchone()
+        if lic_row:
+            plan, setup_paid, expires_str = lic_row
+            days_left = (datetime.fromisoformat(expires_str).date() - today).days \
+                        if expires_str else 0
+            if days_left < 0 and plan != "active":
+                plan = "expired"
+        else:
+            plan, setup_paid, expires_str, days_left = "none", 0, None, 0
+
+        # Revenue
+        rev_row = conn_reg.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM revenue WHERE uuid=?", (cid,)
+        ).fetchone()
+        total_rev = float(rev_row[0]) if rev_row else 0.0
+
+        # Ledger stats
+        lpath = get_ledger_path(cid)
+        tx_count, total_exp, last_date, irs_flags, high_flags = 0, 0.0, None, 0, 0
+        if os.path.exists(lpath):
+            try:
+                lconn = sqlite3.connect(lpath)
+                lcur  = lconn.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM ledger")
+                tx_row = lcur.fetchone()
+                tx_count  = int(tx_row[0]) if tx_row else 0
+                total_exp = float(tx_row[1]) if tx_row else 0.0
+
+                cols = [r[1] for r in lconn.execute("PRAGMA table_info(ledger)").fetchall()]
+                if "date" in cols:
+                    drow = lconn.execute("SELECT MAX(date) FROM ledger").fetchone()
+                    last_date = drow[0] if drow else None
+                if "amount" in cols:
+                    irs_flags  = lconn.execute(
+                        "SELECT COUNT(*) FROM ledger WHERE amount > 75"
+                    ).fetchone()[0]
+                    high_flags = lconn.execute(
+                        "SELECT COUNT(*) FROM ledger WHERE amount > 500"
+                    ).fetchone()[0]
+                lconn.close()
+            except Exception:
+                pass
+
+        # Aging: days since last transaction
+        if last_date:
+            try:
+                ld = datetime.fromisoformat(str(last_date)[:10]).date()
+                days_idle = (today - ld).days
+            except Exception:
+                days_idle = 999
+        else:
+            days_idle = 999
+
+        if   days_idle <= 30:  aging_bucket = "0-30d"
+        elif days_idle <= 60:  aging_bucket = "31-60d"
+        elif days_idle <= 90:  aging_bucket = "61-90d"
+        else:                  aging_bucket = "90d+"
+
+        net_income   = total_rev - total_exp
+        health_score = max(0, min(100,
+            100
+            - (irs_flags * 5)
+            - (high_flags * 10)
+            - (15 if plan == "expired" else 0)
+            - (5  if days_idle > 60 else 0)
+        ))
+
+        rows.append({
+            "name":        name,
+            "plan":        plan,
+            "days_left":   max(days_left, 0),
+            "revenue":     total_rev,
+            "expenses":    total_exp,
+            "net_income":  net_income,
+            "tx_count":    tx_count,
+            "irs_flags":   irs_flags,
+            "high_flags":  high_flags,
+            "last_tx":     str(last_date)[:10] if last_date else "—",
+            "days_idle":   days_idle if last_date else 999,
+            "aging":       aging_bucket,
+            "health":      health_score,
+            "uuid":        cid,
+        })
+
+    conn_reg.close()
+    return pd.DataFrame(rows)
+
+
 def _create_client(name, email=""):
     cid     = str(_uuid.uuid4())
     expires = (datetime.today() + timedelta(days=TRIAL_DAYS)).date().isoformat()
@@ -670,7 +774,7 @@ defaults = {
     'active_name': "No Client",
     'license': {},
     'messages': [],
-    'page': "🏢 Client Management",
+    'page': "🏠 Command Center",
     'stripe_session_id': "",
     'stripe_plan_type': "",
     'last_pdf_bytes': None,
@@ -818,6 +922,7 @@ with st.sidebar:
         st.rerun()
 
     st.session_state.page = st.radio("PIPELINE PHASES", [
+        "🏠 Command Center",
         "🏢 Client Management",
         "💳 Subscription",
         "📥 Ingestion",
@@ -832,8 +937,154 @@ with st.sidebar:
         "💬 AI CFO Chat"
     ])
 
+# --- 5a. PHASE: COMMAND CENTER (Portfolio Dashboard) ---
+if st.session_state.page == "🏠 Command Center":
+    st.title("🏠 Multi-Client Command Center")
+    st.caption("Real-time portfolio health across all client vaults — 2026 IRS & GAAP standards")
+
+    port = _get_portfolio_stats()
+
+    if port.empty:
+        st.info("No clients yet. Go to 🏢 Client Management to create your first client.")
+    else:
+        # ── Portfolio KPI Row ──────────────────────────────────────
+        total_clients  = len(port)
+        active_ct      = int((port["plan"] == "active").sum())
+        trial_ct       = int((port["plan"] == "trial").sum())
+        expired_ct     = int((port["plan"] == "expired").sum())
+        total_flags    = int(port["irs_flags"].sum())
+        total_high     = int(port["high_flags"].sum())
+        total_rev      = port["revenue"].sum()
+        total_exp      = port["expenses"].sum()
+        total_net      = total_rev - total_exp
+        avg_health     = port["health"].mean()
+
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("Total Clients",   total_clients)
+        k2.metric("Active / Trial",  f"{active_ct} / {trial_ct}",
+                  delta=f"{expired_ct} expired" if expired_ct else None,
+                  delta_color="inverse")
+        k3.metric("Portfolio Revenue", f"${total_rev:,.0f}")
+        k4.metric("IRS Flags (>$75)", total_flags,
+                  delta=f"{total_high} high-risk" if total_high else None,
+                  delta_color="inverse")
+        k5.metric("Avg Health Score",  f"{avg_health:.0f}/100")
+
+        st.divider()
+
+        # ── Client Health Matrix ───────────────────────────────────
+        st.subheader("Client Health Matrix")
+
+        def _plan_badge(plan):
+            return {"active": "🟢 Active", "trial": "🟡 Trial",
+                    "expired": "🔴 Expired"}.get(plan, "⚪ None")
+
+        def _health_color(score):
+            if score >= 80: return "🟢"
+            if score >= 50: return "🟡"
+            return "🔴"
+
+        display_df = port.copy()
+        display_df["Status"]       = display_df["plan"].apply(_plan_badge)
+        display_df["Health"]       = display_df.apply(
+            lambda r: f"{_health_color(r['health'])} {r['health']:.0f}", axis=1)
+        display_df["Revenue"]      = display_df["revenue"].apply(lambda x: f"${x:,.2f}")
+        display_df["Expenses"]     = display_df["expenses"].apply(lambda x: f"${x:,.2f}")
+        display_df["Net Income"]   = display_df["net_income"].apply(
+            lambda x: f"+${x:,.2f}" if x >= 0 else f"-${abs(x):,.2f}")
+        display_df["Txns"]         = display_df["tx_count"].astype(str)
+        display_df["IRS Flags"]    = display_df["irs_flags"].astype(str)
+        display_df["Last Tx"]      = display_df["last_tx"]
+        display_df["Days Idle"]    = display_df["days_idle"].apply(
+            lambda x: "—" if x == 999 else str(x))
+        display_df["Aging"]        = display_df["aging"]
+        display_df["Lic Days"]     = display_df["days_left"].astype(str)
+
+        st.dataframe(
+            display_df[["name", "Status", "Health", "Revenue", "Expenses",
+                        "Net Income", "Txns", "IRS Flags", "Last Tx", "Aging", "Lic Days"]].rename(
+                columns={"name": "Client"}),
+            use_container_width=True, hide_index=True
+        )
+
+        st.divider()
+
+        # ── Charts row ────────────────────────────────────────────
+        ch1, ch2 = st.columns(2)
+
+        with ch1:
+            st.subheader("Portfolio Revenue vs Expenses")
+            chart_data = port[["name", "revenue", "expenses"]].copy()
+            chart_data.columns = ["Client", "Revenue", "Expenses"]
+            fig_bar = go.Figure()
+            fig_bar.add_bar(x=chart_data["Client"], y=chart_data["Revenue"],
+                            name="Revenue", marker_color="#00C896")
+            fig_bar.add_bar(x=chart_data["Client"], y=chart_data["Expenses"],
+                            name="Expenses", marker_color="#0070F3")
+            fig_bar.update_layout(
+                barmode="group", paper_bgcolor="#080D18", plot_bgcolor="#080D18",
+                font_color="#B8C5D6", legend=dict(bgcolor="#101C2E"),
+                xaxis=dict(gridcolor="#162032"), yaxis=dict(gridcolor="#162032"),
+                margin=dict(l=0, r=0, t=10, b=0), height=280
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with ch2:
+            st.subheader("Client Aging Distribution")
+            aging_counts = port["aging"].value_counts().reindex(
+                ["0-30d", "31-60d", "61-90d", "90d+"], fill_value=0)
+            fig_aging = go.Figure(go.Bar(
+                x=aging_counts.index, y=aging_counts.values,
+                marker_color=["#00C896", "#F59E0B", "#F97316", "#EF4444"],
+                text=aging_counts.values, textposition="outside"
+            ))
+            fig_aging.update_layout(
+                paper_bgcolor="#080D18", plot_bgcolor="#080D18",
+                font_color="#B8C5D6",
+                xaxis=dict(gridcolor="#162032"), yaxis=dict(gridcolor="#162032"),
+                margin=dict(l=0, r=0, t=10, b=0), height=280, showlegend=False
+            )
+            st.plotly_chart(fig_aging, use_container_width=True)
+
+        st.divider()
+
+        # ── Top Compliance Alerts ─────────────────────────────────
+        flagged_clients = port[port["irs_flags"] > 0].sort_values("irs_flags", ascending=False)
+        if not flagged_clients.empty:
+            st.subheader("⚠️ Top Compliance Alerts")
+            for _, row in flagged_clients.head(5).iterrows():
+                risk_color = "#EF4444" if row["high_flags"] > 0 else "#F59E0B"
+                st.markdown(
+                    f"<div style='background:#101C2E; border-left:4px solid {risk_color}; "
+                    f"border-radius:6px; padding:10px 16px; margin-bottom:8px;'>"
+                    f"<span style='color:#DDE6F0; font-weight:700;'>{row['name']}</span>"
+                    f"<span style='color:#546880; font-size:0.82rem;'> — "
+                    f"{row['irs_flags']} IRS flags ({row['high_flags']} high-risk &gt;$500) "
+                    f"· Last activity: {row['last_tx']}</span></div>",
+                    unsafe_allow_html=True
+                )
+
+            st.divider()
+
+        # ── Quick Client Load ─────────────────────────────────────
+        st.subheader("Quick Load Client")
+        col_sel, col_btn = st.columns([3, 1])
+        with col_sel:
+            all_names = port["name"].tolist()
+            picked    = st.selectbox("Select client to load", all_names,
+                                     key="cmd_center_pick", label_visibility="collapsed")
+        with col_btn:
+            if st.button("⚡ Load", use_container_width=True):
+                row = port[port["name"] == picked].iloc[0]
+                _provision_license(row["uuid"])
+                st.session_state.active_uuid = row["uuid"]
+                st.session_state.active_name = row["name"]
+                st.session_state.license     = _get_license(row["uuid"])
+                st.session_state.page        = "📊 Financial Reporting"
+                st.rerun()
+
 # --- 5. PHASE: CLIENT MANAGEMENT (Multi-Client Vault) ---
-if st.session_state.page == "🏢 Client Management":
+elif st.session_state.page == "🏢 Client Management":
     st.title("🏢 Client Vault")
 
     # --- Create new client ---
