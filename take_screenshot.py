@@ -33,9 +33,10 @@ def enum_windows():
 
 def capture_hwnd(hwnd, path):
     """Capture a window via PrintWindow — no focus needed, works with GPU-rendered Chrome/Edge."""
-    SW_MAXIMIZE = 3
-    user32.ShowWindow(hwnd, SW_MAXIMIZE)
-    time.sleep(1.5)  # wait for maximize animation and repaint
+    # Only restore if minimized — never maximize, as that forces Chrome to reload Streamlit sessions
+    SW_SHOWNOACTIVATE = 4
+    user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+    time.sleep(0.5)
 
     rect = wt.RECT()
     user32.GetWindowRect(hwnd, ctypes.byref(rect))
