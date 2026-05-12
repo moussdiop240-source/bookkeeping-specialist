@@ -198,6 +198,16 @@ def _init_vault():
             renewed_at  TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS revenue (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid    TEXT NOT NULL,
+            label   TEXT NOT NULL DEFAULT 'Revenue',
+            amount  REAL NOT NULL,
+            period  TEXT DEFAULT '',
+            created TEXT NOT NULL
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -264,6 +274,44 @@ def _migrate_legacy():
             c2.close()
             count += 1
     return count
+
+# --- REVENUE ENGINE ---
+def _get_revenue(cid):
+    """Return total revenue for a client (sum of all entries)."""
+    if not cid:
+        return 0.0
+    conn = sqlite3.connect(REGISTRY)
+    row  = conn.execute("SELECT SUM(amount) FROM revenue WHERE uuid=?", (cid,)).fetchone()
+    conn.close()
+    return float(row[0]) if row and row[0] is not None else 0.0
+
+def _get_revenue_entries(cid):
+    conn = sqlite3.connect(REGISTRY)
+    try:
+        df = pd.read_sql_query(
+            "SELECT id, label, period, amount FROM revenue WHERE uuid=? ORDER BY id DESC",
+            conn, params=(cid,)
+        )
+    except Exception:
+        df = pd.DataFrame(columns=["id", "label", "period", "amount"])
+    conn.close()
+    return df
+
+def _add_revenue_entry(cid, label, amount, period=""):
+    conn = sqlite3.connect(REGISTRY)
+    conn.execute(
+        "INSERT INTO revenue (uuid, label, amount, period, created) VALUES (?,?,?,?,?)",
+        (cid, label.strip() or "Revenue", float(amount),
+         period.strip(), datetime.today().isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+def _delete_revenue_entry(entry_id):
+    conn = sqlite3.connect(REGISTRY)
+    conn.execute("DELETE FROM revenue WHERE id=?", (int(entry_id),))
+    conn.commit()
+    conn.close()
 
 # --- LICENSE ENGINE ---
 def _get_license(cid):
@@ -505,6 +553,7 @@ with st.sidebar:
         "🏢 Client Management",
         "💳 Subscription",
         "📥 Ingestion",
+        "💰 Revenue",
         "🏷️ AI Categorization",
         "🤖 Agentic Debate",
         "📊 Financial Reporting",
@@ -712,7 +761,7 @@ elif st.session_state.page == "📑 Financial Statements":
     if df.empty:
         st.info("No data available to generate statements.")
     else:
-        rev, exp = 35000.0, df['amount'].sum()
+        rev, exp = _get_revenue(st.session_state.active_uuid), df['amount'].sum()
         net = rev - exp
         t1, t2, t3, t4 = st.tabs(["Income", "Balance", "Cash Flow", "Equity"])
 
@@ -772,7 +821,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
     if df.empty:
         st.info("No ledger data found. Ingest data to populate the dashboard.")
     else:
-        rev = 35000.0
+        rev = _get_revenue(st.session_state.active_uuid)
         exp = df['amount'].sum()
         net = rev - exp
         burn_rate = exp / max(len(df['date'].unique() if 'date' in df.columns else [1]), 1)
@@ -853,7 +902,7 @@ elif st.session_state.page == "📄 Quick Start Guide":
         st.info("Ingest client data first to generate the PDF report.")
     else:
         client = st.session_state.active_name
-        rev    = 35000.0
+        rev    = _get_revenue(st.session_state.active_uuid)
         exp    = df['amount'].sum()
         net    = rev - exp
         margin = (net / rev * 100) if rev else 0
@@ -1007,6 +1056,73 @@ elif st.session_state.page == "📥 Ingestion":
         ingested.to_sql('ledger', sqlite3.connect(db_path), if_exists='replace', index=False)
         st.success(f"Database updated — {len(ingested)} rows ingested.")
         st.rerun()
+
+elif st.session_state.page == "💰 Revenue":
+    st.title("💰 Revenue Input")
+    _gate()
+    cid = st.session_state.active_uuid
+    total_rev = _get_revenue(cid)
+
+    # --- KPI ---
+    r1, r2 = st.columns(2)
+    r1.metric("Total Revenue", f"${total_rev:,.2f}")
+    exp_total = df['amount'].sum() if not df.empty else 0.0
+    net = total_rev - exp_total
+    r2.metric("Net Income", f"${net:,.2f}",
+              delta=f"{(net/total_rev*100):.1f}% margin" if total_rev else "No revenue set")
+    st.divider()
+
+    # --- Manual entry ---
+    st.subheader("Add Revenue Line Item")
+    c1, c2, c3 = st.columns([2, 1, 1])
+    r_label  = c1.text_input("Revenue Label",  placeholder="e.g. Consulting Fees")
+    r_amount = c2.number_input("Amount ($)", min_value=0.0, step=100.0, format="%.2f")
+    r_period = c3.text_input("Period",      placeholder="e.g. Q1 2026")
+    if st.button("➕ Add Revenue Entry"):
+        if r_amount > 0:
+            _add_revenue_entry(cid, r_label or "Revenue", r_amount, r_period)
+            st.success(f"Added ${r_amount:,.2f} — {r_label or 'Revenue'}")
+            st.rerun()
+        else:
+            st.warning("Enter an amount greater than $0.")
+
+    st.divider()
+
+    # --- CSV import ---
+    with st.expander("📁 Import Revenue from CSV"):
+        st.caption("CSV must have columns: `label`, `amount` (optional: `period`)")
+        rev_file = st.file_uploader("Upload Revenue CSV", type=["csv"], key="rev_csv")
+        if rev_file and st.button("Import CSV"):
+            rev_df = pd.read_csv(rev_file)
+            rev_df.columns = [c.lower().strip() for c in rev_df.columns]
+            if "label" not in rev_df.columns or "amount" not in rev_df.columns:
+                st.error("CSV must contain 'label' and 'amount' columns.")
+            else:
+                for _, row in rev_df.iterrows():
+                    _add_revenue_entry(cid, str(row["label"]),
+                                       float(row["amount"]),
+                                       str(row.get("period", "")))
+                st.success(f"Imported {len(rev_df)} revenue entries.")
+                st.rerun()
+
+    st.divider()
+
+    # --- Current entries table with delete ---
+    st.subheader("Revenue Entries")
+    rev_entries = _get_revenue_entries(cid)
+    if rev_entries.empty:
+        st.info("No revenue entries yet. Add one above.")
+    else:
+        for _, row in rev_entries.iterrows():
+            col_l, col_m, col_r, col_del = st.columns([3, 2, 2, 1])
+            col_l.write(row["label"])
+            col_m.write(row["period"] or "—")
+            col_r.write(f"${row['amount']:,.2f}")
+            if col_del.button("🗑️", key=f"del_rev_{row['id']}"):
+                _delete_revenue_entry(row["id"])
+                st.rerun()
+        st.divider()
+        st.metric("Total", f"${rev_entries['amount'].sum():,.2f}")
 
 elif st.session_state.page == "🏷️ AI Categorization":
     st.title("🏷️ Automated AI Categorization")
