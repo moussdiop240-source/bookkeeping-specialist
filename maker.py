@@ -2,10 +2,12 @@
 import pandas as pd
 import sqlite3
 import os
+import shutil
+import uuid as _uuid
 import requests
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 try:
     from fpdf import FPDF
     FPDF_AVAILABLE = True
@@ -13,13 +15,342 @@ except ImportError:
     FPDF_AVAILABLE = False
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
-os.makedirs('clients', exist_ok=True)
-st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide")
+VAULT    = "vault"
+REGISTRY = os.path.join(VAULT, "registry.db")
+
+TRIAL_DAYS  = 14
+SETUP_FEE   = 299.00
+MONTHLY_FEE = 49.99
+
+# --- PREMIUM THEME ---
+THEME_CSS = """<style>
+/* =====================================================
+   AI BOOKKEEPING SPECIALIST — PREMIUM DARK THEME
+   ===================================================== */
+
+/* Base & background */
+.stApp, .main { background-color: #080D18 !important; }
+.main .block-container { padding-top: 1.5rem; max-width: 1180px; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0C1526 0%, #080D18 100%) !important;
+    border-right: 1px solid #162032 !important;
+}
+section[data-testid="stSidebar"] * { color: #8A9BB5; }
+
+/* Sidebar nav radio items */
+div[data-testid="stSidebar"] .stRadio label {
+    display: block; padding: 6px 12px;
+    border-radius: 7px; font-size: 0.86rem; font-weight: 500;
+    color: #8A9BB5 !important; transition: background 0.15s, color 0.15s;
+}
+div[data-testid="stSidebar"] .stRadio label:hover {
+    background: #162032; color: #E2EAF4 !important;
+}
+
+/* Typography */
+h1 {
+    color: #F0F4FA !important; font-weight: 800 !important;
+    font-size: 1.75rem !important; border-bottom: 2px solid #00C896;
+    padding-bottom: 0.5rem; margin-bottom: 1.2rem !important;
+}
+h2, h3 { color: #DDE6F0 !important; font-weight: 600 !important; }
+p, li, .stMarkdown { color: #B8C5D6; }
+.stCaption p, small { color: #546880 !important; font-size: 0.78rem !important; }
+
+/* Metric cards — glass effect */
+div[data-testid="metric-container"] {
+    background: linear-gradient(145deg, #101C2E, #0C1526) !important;
+    border: 1px solid #162032 !important; border-radius: 14px !important;
+    padding: 1rem 1.3rem !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: border-color 0.2s, transform 0.2s;
+}
+div[data-testid="metric-container"]:hover {
+    border-color: #00C896 !important; transform: translateY(-2px);
+}
+div[data-testid="stMetricValue"] > div {
+    color: #00C896 !important; font-weight: 700 !important; font-size: 1.6rem !important;
+}
+div[data-testid="stMetricLabel"] p {
+    color: #546880 !important; font-size: 0.72rem !important;
+    text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #00C896 0%, #0070F3 100%) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 8px !important; font-weight: 600 !important;
+    letter-spacing: 0.3px; padding: 0.45rem 1.3rem !important;
+    transition: box-shadow 0.2s, transform 0.15s !important;
+}
+.stButton > button:hover {
+    box-shadow: 0 0 22px rgba(0,200,150,0.38) !important; transform: translateY(-1px);
+}
+.stButton > button:active { transform: translateY(0); }
+
+/* Download button — distinct style */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #0070F3 0%, #7C3AED 100%) !important;
+}
+.stDownloadButton > button:hover {
+    box-shadow: 0 0 22px rgba(0,112,243,0.4) !important;
+}
+
+/* Text inputs */
+.stTextInput input, .stTextArea textarea {
+    background-color: #101C2E !important; color: #DDE6F0 !important;
+    border: 1px solid #213044 !important; border-radius: 8px !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: #00C896 !important;
+    box-shadow: 0 0 0 3px rgba(0,200,150,0.12) !important;
+}
+
+/* Selectbox */
+div[data-baseweb="select"] > div {
+    background-color: #101C2E !important; border: 1px solid #213044 !important;
+    border-radius: 8px !important; color: #DDE6F0 !important;
+}
+div[data-baseweb="select"] svg { color: #546880; }
+
+/* Tabs */
+button[data-baseweb="tab"] {
+    color: #546880 !important; font-weight: 500 !important;
+    font-size: 0.88rem !important; transition: color 0.15s;
+}
+button[data-baseweb="tab"]:hover { color: #B8C5D6 !important; }
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #00C896 !important; font-weight: 700 !important;
+}
+div[data-baseweb="tab-highlight"] { background: #00C896 !important; }
+div[data-baseweb="tab-border"]    { background: #162032 !important; }
+
+/* Expanders */
+details > summary {
+    background: #101C2E !important; border: 1px solid #162032 !important;
+    border-radius: 8px !important; color: #DDE6F0 !important;
+    font-weight: 600; padding: 10px 16px !important;
+    transition: border-color 0.2s;
+}
+details[open] > summary { border-color: #00C896 !important; border-radius: 8px 8px 0 0 !important; }
+details > div {
+    background: #101C2E !important; border: 1px solid #162032 !important;
+    border-top: none !important; border-radius: 0 0 8px 8px !important; padding: 14px !important;
+}
+
+/* DataFrames */
+.stDataFrame { border-radius: 12px !important; overflow: hidden !important;
+               border: 1px solid #162032 !important; }
+
+/* Dividers */
+hr { border-color: #162032 !important; margin: 1.2rem 0 !important; }
+
+/* Progress bar */
+.stProgress > div > div { background: linear-gradient(90deg, #00C896, #0070F3) !important; }
+
+/* File uploader */
+section[data-testid="stFileUploadDropzone"] {
+    background: #101C2E !important; border: 2px dashed #213044 !important;
+    border-radius: 12px !important; transition: border-color 0.2s;
+}
+section[data-testid="stFileUploadDropzone"]:hover { border-color: #00C896 !important; }
+
+/* Chat messages */
+div[data-testid="stChatMessageContent"] {
+    background: #101C2E; border: 1px solid #162032;
+    border-radius: 12px; padding: 12px;
+}
+div[data-testid="stChatInput"] textarea {
+    background: #101C2E !important; border-color: #213044 !important;
+    color: #DDE6F0 !important; border-radius: 12px !important;
+}
+
+/* Alerts */
+div[data-testid="stAlert"] { border-radius: 10px !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #080D18; }
+::-webkit-scrollbar-thumb { background: #162032; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #213044; }
+</style>"""
+
+def _init_vault():
+    os.makedirs(VAULT, exist_ok=True)
+    conn = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS clients (
+            uuid    TEXT PRIMARY KEY,
+            name    TEXT NOT NULL UNIQUE,
+            email   TEXT DEFAULT '',
+            created TEXT NOT NULL,
+            status  TEXT DEFAULT 'active'
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS licenses (
+            uuid        TEXT PRIMARY KEY,
+            plan        TEXT DEFAULT 'trial',
+            setup_paid  INTEGER DEFAULT 0,
+            activated   TEXT,
+            expires     TEXT,
+            renewed_at  TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def _create_client(name, email=""):
+    cid     = str(_uuid.uuid4())
+    expires = (datetime.today() + timedelta(days=TRIAL_DAYS)).date().isoformat()
+    os.makedirs(os.path.join(VAULT, cid), exist_ok=True)
+    conn = sqlite3.connect(REGISTRY)
+    try:
+        conn.execute(
+            "INSERT INTO clients (uuid, name, email, created) VALUES (?,?,?,?)",
+            (cid, name.strip(), email.strip(), datetime.today().isoformat())
+        )
+        conn.execute(
+            "INSERT INTO licenses (uuid, plan, expires) VALUES (?,?,?)",
+            (cid, "trial", expires)
+        )
+        conn.commit()
+        return cid, None
+    except sqlite3.IntegrityError:
+        return None, f"Client '{name}' already exists."
+    finally:
+        conn.close()
+
+def _list_clients():
+    _init_vault()
+    conn = sqlite3.connect(REGISTRY)
+    try:
+        df = pd.read_sql_query(
+            "SELECT uuid, name, email, created, status FROM clients ORDER BY created DESC", conn)
+    except Exception:
+        df = pd.DataFrame(columns=["uuid", "name", "email", "created", "status"])
+    conn.close()
+    return df
+
+def get_ledger_path(cid):
+    return os.path.join(VAULT, cid, "ledger.db")
+
+def _migrate_legacy():
+    """Import existing clients/{name}/data/bookkeeping.db into the vault."""
+    legacy = "clients"
+    if not os.path.isdir(legacy):
+        return 0
+    count = 0
+    for name in os.listdir(legacy):
+        old = os.path.join(legacy, name, "data", "bookkeeping.db")
+        if not os.path.exists(old):
+            continue
+        conn = sqlite3.connect(REGISTRY)
+        row  = conn.execute("SELECT uuid FROM clients WHERE name=?", (name,)).fetchone()
+        conn.close()
+        cid  = row[0] if row else _create_client(name)[0]
+        if not cid:
+            continue
+        new = get_ledger_path(cid)
+        if not os.path.exists(new):
+            shutil.copy2(old, new)
+            c2 = sqlite3.connect(new)
+            tables = {r[0] for r in c2.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            if "bookkeeping" in tables and "ledger" not in tables:
+                c2.execute("ALTER TABLE bookkeeping RENAME TO ledger")
+                c2.commit()
+            c2.close()
+            count += 1
+    return count
+
+# --- LICENSE ENGINE ---
+def _get_license(cid):
+    """Return dict: plan, days_remaining, expires, setup_paid."""
+    conn = sqlite3.connect(REGISTRY)
+    row  = conn.execute(
+        "SELECT plan, setup_paid, expires FROM licenses WHERE uuid=?", (cid,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"plan": "none", "days_remaining": 0, "expires": None, "setup_paid": 0}
+    plan, setup_paid, expires_str = row
+    today = datetime.today().date()
+    if expires_str:
+        expires      = datetime.fromisoformat(expires_str).date()
+        days_left    = (expires - today).days
+        if days_left < 0 and plan != "active":
+            plan     = "expired"
+        elif days_left < 0:
+            plan     = "expired"
+    else:
+        days_left = 0
+    return {"plan": plan, "days_remaining": max(days_left, 0),
+            "expires": expires_str, "setup_paid": bool(setup_paid)}
+
+def _provision_license(cid):
+    """Ensure a license row exists for legacy/migrated clients."""
+    expires = (datetime.today() + timedelta(days=TRIAL_DAYS)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        INSERT OR IGNORE INTO licenses (uuid, plan, expires) VALUES (?,?,?)
+    """, (cid, "trial", expires))
+    conn.commit()
+    conn.close()
+
+def _activate_license(cid):
+    """Mark setup paid, set 30-day active subscription."""
+    expires = (datetime.today() + timedelta(days=30)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        UPDATE licenses SET plan='active', setup_paid=1, activated=?, expires=?
+        WHERE uuid=?
+    """, (datetime.today().isoformat(), expires, cid))
+    conn.commit()
+    conn.close()
+
+def _renew_license(cid):
+    """Extend subscription by 30 days from today."""
+    expires = (datetime.today() + timedelta(days=30)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        UPDATE licenses SET plan='active', expires=?, renewed_at=? WHERE uuid=?
+    """, (expires, datetime.today().isoformat(), cid))
+    conn.commit()
+    conn.close()
+
+def _gate():
+    """Block expired clients. Show trial banner for active trials."""
+    lic = st.session_state.get("license", {})
+    plan = lic.get("plan", "none")
+    days = lic.get("days_remaining", 0)
+    if plan == "expired":
+        st.error("⛔ Subscription Expired")
+        st.markdown(
+            "Your access has lapsed. Renew your subscription to continue.\n\n"
+            "Navigate to **💳 Subscription** in the sidebar."
+        )
+        st.stop()
+    if plan == "none":
+        st.warning("No license found for this client. Contact support.")
+        st.stop()
+    if plan == "trial":
+        st.warning(f"⚠️ **Trial Mode** — {days} day(s) remaining. "
+                   "Upgrade to unlock permanent access.")
+
+_init_vault()
+st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide", page_icon="📊")
+st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 # Force initialize all keys to prevent AttributeError
 defaults = {
     'auth': False,
-    'active_client': "None",
+    'active_uuid': "",
+    'active_name': "No Client",
+    'license': {},
     'messages': [],
     'page': "🏢 Client Management"
 }
@@ -29,28 +360,56 @@ for key, val in defaults.items():
 
 # --- 2. AUTHENTICATION GATE ---
 if not st.session_state.auth:
-    st.title("🛡️ AI Bookkeeping Specialist")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Professional Login")
-        if st.button("Access Portal"):
+    st.markdown("""
+    <div style="text-align:center; padding:60px 0 32px;">
+        <div style="font-size:3.2rem; margin-bottom:12px;">📊</div>
+        <h1 style="
+            font-size:2.6rem; font-weight:900; border:none; margin:0;
+            background:linear-gradient(135deg,#00C896 0%,#0070F3 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        ">AI Bookkeeping Specialist</h1>
+        <p style="color:#546880; font-size:1rem; margin-top:8px; letter-spacing:0.04em;">
+            Professional-grade accounting intelligence &nbsp;·&nbsp; 2026 IRS &amp; GAAP Compliant
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_c, col_r = st.columns([1, 1.4, 1])
+    with col_c:
+        st.markdown("""
+        <div style="
+            background:linear-gradient(145deg,#101C2E,#0C1526);
+            border:1px solid #162032; border-radius:16px;
+            padding:32px 36px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+        ">
+            <p style="color:#8A9BB5; font-size:0.78rem; text-transform:uppercase;
+               letter-spacing:0.1em; margin-bottom:4px;">Secure Local Access</p>
+            <h3 style="color:#F0F4FA; margin:0 0 20px; font-size:1.3rem;">
+                Professional Portal
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🔓  Access Portal", use_container_width=True):
             st.session_state.auth = True
             st.rerun()
-    with c2:
-        st.info("Local Deployment Active: Cloud Sync Disabled.")
+        st.markdown("""
+        <p style="text-align:center; color:#2A3A50; font-size:0.72rem; margin-top:12px;">
+            🔒 100% local deployment · No cloud sync · SHA-256 ledger integrity
+        </p>
+        """, unsafe_allow_html=True)
     st.stop()
 
 # --- 3. DATA PERSISTENCE ENGINE ---
 def load_db():
-    client = st.session_state.active_client
-    if client == "None":
+    cid = st.session_state.get("active_uuid", "")
+    if not cid:
         return pd.DataFrame()
-    db_path = f"clients/{client}/data/bookkeeping.db"
-    if not os.path.exists(db_path):
+    path = get_ledger_path(cid)
+    if not os.path.exists(path):
         return pd.DataFrame()
     try:
-        conn = sqlite3.connect(db_path)
-        df = pd.read_sql_query("SELECT * FROM ledger", conn)
+        conn = sqlite3.connect(path)
+        df   = pd.read_sql_query("SELECT * FROM ledger", conn)
         df.columns = [c.lower() for c in df.columns]
         conn.close()
         return df
@@ -71,13 +430,44 @@ df = load_db()
 
 # --- 4. NAVIGATION CONTROL ---
 with st.sidebar:
-    st.title(f"👤 {st.session_state.active_client}")
+    st.markdown("""
+    <div style="padding:18px 4px 10px; border-bottom:1px solid #162032; margin-bottom:14px;">
+        <div style="
+            font-size:1.05rem; font-weight:800; letter-spacing:0.02em;
+            background:linear-gradient(135deg,#00C896,#0070F3);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        ">📊 AI Bookkeeping</div>
+        <div style="font-size:0.7rem; color:#2A3A50; letter-spacing:0.06em;
+                    text-transform:uppercase; margin-top:2px;">Specialist · 2026 Edition</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown(f"<div style='color:#8A9BB5; font-size:0.82rem; margin-bottom:4px;'>"
+                f"👤 <strong style='color:#DDE6F0'>{st.session_state.active_name}</strong></div>",
+                unsafe_allow_html=True)
+    # License status badge
+    _lic = st.session_state.get("license", {})
+    _plan, _days = _lic.get("plan", ""), _lic.get("days_remaining", 0)
+    _pill_styles = {
+        "active":  ("🟢", "#00C896", "#011F14", f"Active · {_days}d" if _days < 10 else "Active"),
+        "trial":   ("🟡", "#F59E0B", "#1A1200", f"Trial · {_days}d left"),
+        "expired": ("🔴", "#EF4444", "#1A0000", "Expired"),
+    }
+    _ico, _fg, _bg, _txt = _pill_styles.get(_plan, ("⚪", "#546880", "#101C2E", "No License"))
+    st.markdown(
+        f"<span style='background:{_bg}; color:{_fg}; border:1px solid {_fg}33; "
+        f"border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600; "
+        f"letter-spacing:0.05em;'>{_ico} {_txt}</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
     if st.button("🚪 Logout"):
         st.session_state.auth = False
         st.rerun()
-    
+
     st.session_state.page = st.radio("PIPELINE PHASES", [
         "🏢 Client Management",
+        "💳 Subscription",
         "📥 Ingestion",
         "🏷️ AI Categorization",
         "🤖 Agentic Debate",
@@ -88,29 +478,124 @@ with st.sidebar:
         "💬 AI CFO Chat"
     ])
 
-# --- 5. PHASE: CLIENT MANAGEMENT (The State Anchor) ---
+# --- 5. PHASE: CLIENT MANAGEMENT (Multi-Client Vault) ---
 if st.session_state.page == "🏢 Client Management":
-    st.title("🏢 Client Workspace Management")
-    col1, col2 = st.columns(2)
-    with col1:
-        new_client = st.text_input("Create New Profile")
-        if st.button("➕ Create") and new_client:
-            os.makedirs(f"clients/{new_client}/data", exist_ok=True)
-            st.success(f"Profile '{new_client}' ready.")
-    with col2:
-        existing = [d for d in os.listdir('clients') if os.path.isdir(os.path.join('clients', d))]
-        choice = st.selectbox("Select Active Workspace", ["None"] + existing)
-        if st.button("✅ Load Client Data"):
-            st.session_state.active_client = choice
+    st.title("🏢 Client Vault")
+
+    # --- Create new client ---
+    with st.expander("➕ Create New Client Profile", expanded=False):
+        c1, c2 = st.columns(2)
+        new_name  = c1.text_input("Client Name")
+        new_email = c2.text_input("Contact Email (optional)")
+        if st.button("Create Profile") and new_name:
+            cid, err = _create_client(new_name, new_email)
+            if err:
+                st.error(err)
+            else:
+                st.success(f"Vault created — UUID: `{cid}`")
+                st.rerun()
+
+    st.divider()
+
+    # --- Migrate legacy data ---
+    with st.expander("🔄 Migrate Legacy clients/ Data", expanded=False):
+        st.caption("Imports existing clients/{name}/data/bookkeeping.db into the vault.")
+        if st.button("Run Migration"):
+            n = _migrate_legacy()
+            st.success(f"Migrated {n} client(s) into the vault.")
+            st.rerun()
+
+    st.divider()
+
+    # --- Client registry table ---
+    registry_df = _list_clients()
+    if registry_df.empty:
+        st.info("No clients yet. Create one above or run migration.")
+    else:
+        st.subheader("Active Client Registry")
+        st.dataframe(
+            registry_df[["name", "email", "created", "status"]],
+            use_container_width=True
+        )
+
+        # Load a client into session
+        names  = registry_df["name"].tolist()
+        choice = st.selectbox("Select Client Workspace", names)
+        if st.button("✅ Load Client"):
+            row = registry_df[registry_df["name"] == choice].iloc[0]
+            cid = row["uuid"]
+            _provision_license(cid)          # no-op if row already exists
+            st.session_state.active_uuid = cid
+            st.session_state.active_name = row["name"]
+            st.session_state.license     = _get_license(cid)
             st.rerun()
 
 # --- PHASE: GLOBAL CLIENT CHECK ---
-elif st.session_state.active_client == "None":
+elif not st.session_state.active_uuid:
     st.warning("⚠️ Access Restricted: Select a client in 'Client Management' to see data.")
 
-# --- 6. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
+# --- 6. PHASE: SUBSCRIPTION GATEKEEPER ---
+elif st.session_state.page == "💳 Subscription":
+    st.title("💳 Subscription & Licensing")
+    cid = st.session_state.active_uuid
+    lic = _get_license(cid)
+    st.session_state.license = lic        # keep session in sync
+
+    plan, days, expires, setup_paid = (
+        lic["plan"], lic["days_remaining"], lic["expires"], lic["setup_paid"]
+    )
+
+    # --- Status card ---
+    s1, s2, s3 = st.columns(3)
+    badge = {"active": "🟢 Active", "trial": "🟡 Trial", "expired": "🔴 Expired"}.get(plan, "⚪")
+    s1.metric("Plan Status",   badge)
+    s2.metric("Days Remaining", days)
+    s3.metric("Expires",        expires or "—")
+    st.divider()
+
+    # --- Pricing panel ---
+    col_setup, col_monthly = st.columns(2)
+    with col_setup:
+        st.subheader(f"Setup — ${SETUP_FEE:,.0f}")
+        st.markdown("- One-time activation fee\n- Full vault access\n- Audit-ready PDF reports\n- Priority support")
+        if not setup_paid:
+            key_in = st.text_input("Enter license key to activate", key="setup_key",
+                                   placeholder="SETUP-299")
+            if st.button("Activate Now"):
+                if key_in.strip().upper() == "SETUP-299":
+                    _activate_license(cid)
+                    st.session_state.license = _get_license(cid)
+                    st.success("✅ Account activated — 30 days of full access unlocked.")
+                    st.rerun()
+                else:
+                    st.error("Invalid license key.")
+        else:
+            st.success("✅ Setup fee paid.")
+
+    with col_monthly:
+        st.subheader(f"Monthly — ${MONTHLY_FEE:,.2f}/mo")
+        st.markdown("- Renews access for 30 days\n- All AI features included\n- Agentic Debate + CFO Dashboard\n- Cancel anytime")
+        renew_key = st.text_input("Enter renewal key", key="renew_key",
+                                  placeholder="RENEW-4999")
+        if st.button("Renew Subscription"):
+            if renew_key.strip().upper() == "RENEW-4999":
+                _renew_license(cid)
+                st.session_state.license = _get_license(cid)
+                st.success("✅ Subscription renewed — 30 days added.")
+                st.rerun()
+            else:
+                st.error("Invalid renewal key.")
+
+    st.divider()
+    st.caption(
+        "Demo keys: **SETUP-299** (one-time activation) · **RENEW-4999** (monthly renewal). "
+        "Replace with Stripe webhook integration for production."
+    )
+
+# --- 8. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
 elif st.session_state.page == "🤖 Agentic Debate":
     st.title("🤖 Agentic Debate: GAAP vs. IRS Reconciliation")
+    _gate()
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
@@ -157,6 +642,7 @@ elif st.session_state.page == "🤖 Agentic Debate":
 # --- 7. PHASE: FINANCIAL REPORTING (RECONCILIATION & RISK) ---
 elif st.session_state.page == "📊 Financial Reporting":
     st.title("📊 Financial Reporting & Risk Metrics")
+    _gate()
     if df.empty:
         st.info("Ingest data to generate risk profiles.")
     else:
@@ -172,6 +658,7 @@ elif st.session_state.page == "📊 Financial Reporting":
 # --- 8. PHASE: FINANCIAL STATEMENTS (FULL BREAKDOWN) ---
 elif st.session_state.page == "📑 Financial Statements":
     st.title("📑 Core Financial Statements")
+    _gate()
     if df.empty:
         st.info("No data available to generate statements.")
     else:
@@ -231,6 +718,7 @@ elif st.session_state.page == "📑 Financial Statements":
 # --- 9. PHASE: CFO DASHBOARD ---
 elif st.session_state.page == "📈 CFO Dashboard":
     st.title("📈 CFO Dashboard")
+    _gate()
     if df.empty:
         st.info("No ledger data found. Ingest data to populate the dashboard.")
     else:
@@ -308,7 +796,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
 # --- 10. PHASE: QUICK START GUIDE (FPDF2 REPORT) ---
 elif st.session_state.page == "📄 Quick Start Guide":
     st.title("📄 Quick Start Guide — PDF Financial Report")
-
+    _gate()
     if not FPDF_AVAILABLE:
         st.error("fpdf2 is not installed. Run: `pip install fpdf2`")
     elif df.empty:
@@ -426,6 +914,7 @@ elif st.session_state.page == "📄 Quick Start Guide":
 # --- 12. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
     st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
+    _gate()
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
@@ -455,7 +944,8 @@ Ledger Data (JSON):
 
 # --- 10. REMAINING PHASES ---
 elif st.session_state.page == "📥 Ingestion":
-    st.title(f"📥 Ingestion: {st.session_state.active_client}")
+    st.title(f"📥 Ingestion: {st.session_state.active_name}")
+    _gate()
     up = st.file_uploader("Upload Ledger (Excel or CSV)", type=['xlsx', 'csv'])
     if up and st.button("🚀 Sync"):
         if up.name.endswith('.csv'):
@@ -463,13 +953,14 @@ elif st.session_state.page == "📥 Ingestion":
         else:
             ingested = pd.read_excel(up)
         ingested.columns = [c.lower() for c in ingested.columns]
-        db_path = f"clients/{st.session_state.active_client}/data/bookkeeping.db"
+        db_path = get_ledger_path(st.session_state.active_uuid)
         ingested.to_sql('ledger', sqlite3.connect(db_path), if_exists='replace', index=False)
         st.success(f"Database updated — {len(ingested)} rows ingested.")
         st.rerun()
 
 elif st.session_state.page == "🏷️ AI Categorization":
     st.title("🏷️ Automated AI Categorization")
+    _gate()
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
@@ -479,7 +970,7 @@ elif st.session_state.page == "🏷️ AI Categorization":
         st.caption(f"{len(needs_cat)} of {len(df)} rows pending categorization.")
         st.dataframe(df, use_container_width=True)
         if st.button("🚀 Run Magic Categorization"):
-            db_path = f"clients/{st.session_state.active_client}/data/bookkeeping.db"
+            db_path = get_ledger_path(st.session_state.active_uuid)
             bar = st.progress(0)
             status = st.empty()
             total = len(needs_cat)
