@@ -1,0 +1,23 @@
+﻿# PROJECT: AI Bookkeeping Specialist
+# ROLE: Senior Financial Systems Architect
+# GOAL: Maintain and expand a local-first, multi-client bookkeeping pipeline.
+
+## ARCHITECTURE CONTEXT
+- **Tech Stack:** Streamlit (UI), SQLite (Database), Ollama/Llama 3.2 (LLM).
+- **Core Logic:** The file `maker.py` uses a phase-based navigation system anchored by `st.session_state`.
+- **Database Pathing:** All client data MUST be saved to `clients/{client_name}/data/bookkeeping.db`.
+- **State Guard:** Never remove or bypass the `defaults` initialization in `st.session_state`.
+
+## DOMAIN KNOWLEDGE (RECONCILIATION)
+- **IRS Agent:** Focuses on IRC Section 274. Flags expenses > $75 for missing substantiation.
+- **GAAP Agent:** Focuses on ASC 360. Flags expenses > $2000 for potential capitalization vs. immediate expensing.
+
+## DEVELOPMENT CONSTRAINTS
+1. **Token Efficiency:** Do not rewrite the entire `maker.py` file unless specifically asked. Use `diff` style updates for specific functions.
+2. **UI Integrity:** All new features must be added as a new `elif st.session_state.page == "Name"` block.
+3. **Local-First:** No external API calls are allowed except for the local Ollama endpoint (`http://localhost:11434`).
+4. **Privacy:** Maintain the PII scrubbing philosophy. Financial data must never leave the local environment.
+
+## HANDOFF PROTOCOL
+- On startup, verify the existence of `system_context.txt`.
+- When asked to "Add a feature," propose a logic plan in plain English before generating code.
