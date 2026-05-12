@@ -530,9 +530,23 @@ if st.session_state.page == "🏢 Client Management":
             st.session_state.license     = _get_license(cid)
             st.rerun()
 
-# --- PHASE: GLOBAL CLIENT CHECK ---
+# --- PHASE: GLOBAL CLIENT CHECK — welcome screen ---
 elif not st.session_state.active_uuid:
-    st.warning("⚠️ Access Restricted: Select a client in 'Client Management' to see data.")
+    st.markdown("""
+    <div style="text-align:center; padding:60px 0 24px;">
+        <div style="font-size:2.8rem; margin-bottom:12px;">📂</div>
+        <h2 style="color:#DDE6F0; font-weight:700; margin:0;">No Client Selected</h2>
+        <p style="color:#546880; margin-top:8px; font-size:0.95rem;">
+            Select or create a client workspace to access the pipeline.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    col_l, col_c, col_r = st.columns([1, 1.2, 1])
+    with col_c:
+        if st.button("👉  Start Here: Select or Create a Client",
+                     use_container_width=True):
+            st.session_state.page = "🏢 Client Management"
+            st.rerun()
 
 # --- 6. PHASE: SUBSCRIPTION GATEKEEPER ---
 elif st.session_state.page == "💳 Subscription":
@@ -802,7 +816,7 @@ elif st.session_state.page == "📄 Quick Start Guide":
     elif df.empty:
         st.info("Ingest client data first to generate the PDF report.")
     else:
-        client = st.session_state.active_client
+        client = st.session_state.active_name
         rev    = 35000.0
         exp    = df['amount'].sum()
         net    = rev - exp
