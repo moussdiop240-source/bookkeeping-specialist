@@ -7,7 +7,7 @@ import uuid as _uuid
 import requests
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 try:
     from fpdf import FPDF
     FPDF_AVAILABLE = True
@@ -17,6 +17,10 @@ except ImportError:
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
 VAULT    = "vault"
 REGISTRY = os.path.join(VAULT, "registry.db")
+
+TRIAL_DAYS   = 14
+SETUP_FEE    = 299.00
+MONTHLY_FEE  = 49.99
 
 def _init_vault():
     os.makedirs(VAULT, exist_ok=True)
@@ -30,17 +34,32 @@ def _init_vault():
             status  TEXT DEFAULT 'active'
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS licenses (
+            uuid        TEXT PRIMARY KEY,
+            plan        TEXT DEFAULT 'trial',
+            setup_paid  INTEGER DEFAULT 0,
+            activated   TEXT,
+            expires     TEXT,
+            renewed_at  TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
 def _create_client(name, email=""):
-    cid = str(_uuid.uuid4())
+    cid     = str(_uuid.uuid4())
+    expires = (datetime.today() + timedelta(days=TRIAL_DAYS)).date().isoformat()
     os.makedirs(os.path.join(VAULT, cid), exist_ok=True)
     conn = sqlite3.connect(REGISTRY)
     try:
         conn.execute(
             "INSERT INTO clients (uuid, name, email, created) VALUES (?,?,?,?)",
             (cid, name.strip(), email.strip(), datetime.today().isoformat())
+        )
+        conn.execute(
+            "INSERT INTO licenses (uuid, plan, expires) VALUES (?,?,?)",
+            (cid, "trial", expires)
         )
         conn.commit()
         return cid, None
@@ -92,6 +111,80 @@ def _migrate_legacy():
             count += 1
     return count
 
+# --- LICENSE ENGINE ---
+def _get_license(cid):
+    """Return dict: plan, days_remaining, expires, setup_paid."""
+    conn = sqlite3.connect(REGISTRY)
+    row  = conn.execute(
+        "SELECT plan, setup_paid, expires FROM licenses WHERE uuid=?", (cid,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {"plan": "none", "days_remaining": 0, "expires": None, "setup_paid": 0}
+    plan, setup_paid, expires_str = row
+    today = datetime.today().date()
+    if expires_str:
+        expires      = datetime.fromisoformat(expires_str).date()
+        days_left    = (expires - today).days
+        if days_left < 0 and plan != "active":
+            plan     = "expired"
+        elif days_left < 0:
+            plan     = "expired"
+    else:
+        days_left = 0
+    return {"plan": plan, "days_remaining": max(days_left, 0),
+            "expires": expires_str, "setup_paid": bool(setup_paid)}
+
+def _provision_license(cid):
+    """Ensure a license row exists for legacy/migrated clients."""
+    expires = (datetime.today() + timedelta(days=TRIAL_DAYS)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        INSERT OR IGNORE INTO licenses (uuid, plan, expires) VALUES (?,?,?)
+    """, (cid, "trial", expires))
+    conn.commit()
+    conn.close()
+
+def _activate_license(cid):
+    """Mark setup paid, set 30-day active subscription."""
+    expires = (datetime.today() + timedelta(days=30)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        UPDATE licenses SET plan='active', setup_paid=1, activated=?, expires=?
+        WHERE uuid=?
+    """, (datetime.today().isoformat(), expires, cid))
+    conn.commit()
+    conn.close()
+
+def _renew_license(cid):
+    """Extend subscription by 30 days from today."""
+    expires = (datetime.today() + timedelta(days=30)).date().isoformat()
+    conn    = sqlite3.connect(REGISTRY)
+    conn.execute("""
+        UPDATE licenses SET plan='active', expires=?, renewed_at=? WHERE uuid=?
+    """, (expires, datetime.today().isoformat(), cid))
+    conn.commit()
+    conn.close()
+
+def _gate():
+    """Block expired clients. Show trial banner for active trials."""
+    lic = st.session_state.get("license", {})
+    plan = lic.get("plan", "none")
+    days = lic.get("days_remaining", 0)
+    if plan == "expired":
+        st.error("⛔ Subscription Expired")
+        st.markdown(
+            "Your access has lapsed. Renew your subscription to continue.\n\n"
+            "Navigate to **💳 Subscription** in the sidebar."
+        )
+        st.stop()
+    if plan == "none":
+        st.warning("No license found for this client. Contact support.")
+        st.stop()
+    if plan == "trial":
+        st.warning(f"⚠️ **Trial Mode** — {days} day(s) remaining. "
+                   "Upgrade to unlock permanent access.")
+
 _init_vault()
 st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide")
 
@@ -100,6 +193,7 @@ defaults = {
     'auth': False,
     'active_uuid': "",
     'active_name': "No Client",
+    'license': {},
     'messages': [],
     'page': "🏢 Client Management"
 }
@@ -152,12 +246,26 @@ df = load_db()
 # --- 4. NAVIGATION CONTROL ---
 with st.sidebar:
     st.title(f"👤 {st.session_state.active_name}")
+    # License status badge
+    _lic = st.session_state.get("license", {})
+    _plan, _days = _lic.get("plan", "—"), _lic.get("days_remaining", 0)
+    if _plan == "active":
+        _badge = f"🟢 Active ({_days}d left)" if _days < 10 else "🟢 Active"
+    elif _plan == "trial":
+        _badge = f"🟡 Trial ({_days}d left)"
+    elif _plan == "expired":
+        _badge = "🔴 Expired"
+    else:
+        _badge = "⚪ No License"
+    st.caption(_badge)
+
     if st.button("🚪 Logout"):
         st.session_state.auth = False
         st.rerun()
-    
+
     st.session_state.page = st.radio("PIPELINE PHASES", [
         "🏢 Client Management",
+        "💳 Subscription",
         "📥 Ingestion",
         "🏷️ AI Categorization",
         "🤖 Agentic Debate",
@@ -213,17 +321,79 @@ if st.session_state.page == "🏢 Client Management":
         choice = st.selectbox("Select Client Workspace", names)
         if st.button("✅ Load Client"):
             row = registry_df[registry_df["name"] == choice].iloc[0]
-            st.session_state.active_uuid = row["uuid"]
+            cid = row["uuid"]
+            _provision_license(cid)          # no-op if row already exists
+            st.session_state.active_uuid = cid
             st.session_state.active_name = row["name"]
+            st.session_state.license     = _get_license(cid)
             st.rerun()
 
 # --- PHASE: GLOBAL CLIENT CHECK ---
 elif not st.session_state.active_uuid:
     st.warning("⚠️ Access Restricted: Select a client in 'Client Management' to see data.")
 
-# --- 6. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
+# --- 6. PHASE: SUBSCRIPTION GATEKEEPER ---
+elif st.session_state.page == "💳 Subscription":
+    st.title("💳 Subscription & Licensing")
+    cid = st.session_state.active_uuid
+    lic = _get_license(cid)
+    st.session_state.license = lic        # keep session in sync
+
+    plan, days, expires, setup_paid = (
+        lic["plan"], lic["days_remaining"], lic["expires"], lic["setup_paid"]
+    )
+
+    # --- Status card ---
+    s1, s2, s3 = st.columns(3)
+    badge = {"active": "🟢 Active", "trial": "🟡 Trial", "expired": "🔴 Expired"}.get(plan, "⚪")
+    s1.metric("Plan Status",   badge)
+    s2.metric("Days Remaining", days)
+    s3.metric("Expires",        expires or "—")
+    st.divider()
+
+    # --- Pricing panel ---
+    col_setup, col_monthly = st.columns(2)
+    with col_setup:
+        st.subheader(f"Setup — ${SETUP_FEE:,.0f}")
+        st.markdown("- One-time activation fee\n- Full vault access\n- Audit-ready PDF reports\n- Priority support")
+        if not setup_paid:
+            key_in = st.text_input("Enter license key to activate", key="setup_key",
+                                   placeholder="SETUP-299")
+            if st.button("Activate Now"):
+                if key_in.strip().upper() == "SETUP-299":
+                    _activate_license(cid)
+                    st.session_state.license = _get_license(cid)
+                    st.success("✅ Account activated — 30 days of full access unlocked.")
+                    st.rerun()
+                else:
+                    st.error("Invalid license key.")
+        else:
+            st.success("✅ Setup fee paid.")
+
+    with col_monthly:
+        st.subheader(f"Monthly — ${MONTHLY_FEE:,.2f}/mo")
+        st.markdown("- Renews access for 30 days\n- All AI features included\n- Agentic Debate + CFO Dashboard\n- Cancel anytime")
+        renew_key = st.text_input("Enter renewal key", key="renew_key",
+                                  placeholder="RENEW-4999")
+        if st.button("Renew Subscription"):
+            if renew_key.strip().upper() == "RENEW-4999":
+                _renew_license(cid)
+                st.session_state.license = _get_license(cid)
+                st.success("✅ Subscription renewed — 30 days added.")
+                st.rerun()
+            else:
+                st.error("Invalid renewal key.")
+
+    st.divider()
+    st.caption(
+        "Demo keys: **SETUP-299** (one-time activation) · **RENEW-4999** (monthly renewal). "
+        "Replace with Stripe webhook integration for production."
+    )
+
+# --- 8. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
 elif st.session_state.page == "🤖 Agentic Debate":
     st.title("🤖 Agentic Debate: GAAP vs. IRS Reconciliation")
+    _gate()
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
@@ -270,6 +440,7 @@ elif st.session_state.page == "🤖 Agentic Debate":
 # --- 7. PHASE: FINANCIAL REPORTING (RECONCILIATION & RISK) ---
 elif st.session_state.page == "📊 Financial Reporting":
     st.title("📊 Financial Reporting & Risk Metrics")
+    _gate()
     if df.empty:
         st.info("Ingest data to generate risk profiles.")
     else:
@@ -285,6 +456,7 @@ elif st.session_state.page == "📊 Financial Reporting":
 # --- 8. PHASE: FINANCIAL STATEMENTS (FULL BREAKDOWN) ---
 elif st.session_state.page == "📑 Financial Statements":
     st.title("📑 Core Financial Statements")
+    _gate()
     if df.empty:
         st.info("No data available to generate statements.")
     else:
@@ -344,6 +516,7 @@ elif st.session_state.page == "📑 Financial Statements":
 # --- 9. PHASE: CFO DASHBOARD ---
 elif st.session_state.page == "📈 CFO Dashboard":
     st.title("📈 CFO Dashboard")
+    _gate()
     if df.empty:
         st.info("No ledger data found. Ingest data to populate the dashboard.")
     else:
@@ -421,7 +594,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
 # --- 10. PHASE: QUICK START GUIDE (FPDF2 REPORT) ---
 elif st.session_state.page == "📄 Quick Start Guide":
     st.title("📄 Quick Start Guide — PDF Financial Report")
-
+    _gate()
     if not FPDF_AVAILABLE:
         st.error("fpdf2 is not installed. Run: `pip install fpdf2`")
     elif df.empty:
@@ -539,6 +712,7 @@ elif st.session_state.page == "📄 Quick Start Guide":
 # --- 12. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
     st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
+    _gate()
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
@@ -569,6 +743,7 @@ Ledger Data (JSON):
 # --- 10. REMAINING PHASES ---
 elif st.session_state.page == "📥 Ingestion":
     st.title(f"📥 Ingestion: {st.session_state.active_name}")
+    _gate()
     up = st.file_uploader("Upload Ledger (Excel or CSV)", type=['xlsx', 'csv'])
     if up and st.button("🚀 Sync"):
         if up.name.endswith('.csv'):
@@ -583,6 +758,7 @@ elif st.session_state.page == "📥 Ingestion":
 
 elif st.session_state.page == "🏷️ AI Categorization":
     st.title("🏷️ Automated AI Categorization")
+    _gate()
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
