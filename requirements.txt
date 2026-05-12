@@ -1,0 +1,9 @@
+streamlit==1.57.0
+pandas==2.2.2
+plotly==6.7.0
+fpdf2==2.8.7
+stripe==15.1.0
+requests==2.32.3
+Pillow==12.2.0
+numpy==1.26.4
+openpyxl==3.1.2
