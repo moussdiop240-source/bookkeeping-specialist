@@ -39,23 +39,22 @@ def enum_windows():
     user32.EnumWindows(ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)(cb), 0)
     return results
 
-time.sleep(1.5)
-
-all_wins = enum_windows()
+time.sleep(2)  # wait for browser to finish opening
 
 # Step 1: minimize Claude Code / terminal windows
-terminal_fragments = ["Build new features", "Claude Code", "claude.exe", "Windows PowerShell", "cmd.exe"]
-for hwnd, title in all_wins:
+terminal_fragments = ["Build new features", "Claude Code", "Windows PowerShell", "cmd.exe"]
+for hwnd, title in enum_windows():
     if any(f in title for f in terminal_fragments):
         user32.ShowWindow(hwnd, SW_MINIMIZE)
 
-time.sleep(0.8)
+time.sleep(1)  # let minimization settle, then re-enumerate
 
-# Step 2: find and foreground the browser with our page
+# Step 2: find browser AFTER minimizing terminal (fresh enum)
 browser_fragments = [
     "AI Bookkeeping Specialist", "localhost:8501", "bookkeeping-specialist",
     "GitHub", "Streamlit",
 ]
+all_wins = enum_windows()
 target = None
 for hwnd, title in all_wins:
     if any(f in title for f in browser_fragments):
