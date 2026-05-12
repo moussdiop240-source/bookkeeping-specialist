@@ -1,16 +1,12 @@
 import sys, os, subprocess, time, ctypes, ctypes.wintypes as wt
-from PIL import ImageGrab
+from PIL import Image, ImageGrab
 
 DETACHED = "--detached" in sys.argv
 out_path = next((a for a in sys.argv[1:] if not a.startswith("--")),
                 r"C:\Users\User\bookkeeping-specialist\screenshot_app.png")
-refresh  = "--refresh" in sys.argv
 
 if not DETACHED:
-    # Spawn independent child, exit immediately so terminal stops being active
     args = [sys.executable, os.path.abspath(__file__), "--detached", out_path]
-    if refresh:
-        args.append("--refresh")
     subprocess.Popen(
         args,
         creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | NEW_PROCESS_GROUP
@@ -20,12 +16,8 @@ if not DETACHED:
     sys.exit(0)
 
 # ── Detached child ──────────────────────────────────────────────────
-user32   = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
-
-SW_MINIMIZE = 6
-SW_RESTORE  = 9
-SW_MAXIMIZE = 3
+user32 = ctypes.windll.user32
+gdi32  = ctypes.windll.gdi32
 
 def enum_windows():
     results = []
@@ -39,56 +31,91 @@ def enum_windows():
     user32.EnumWindows(ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)(cb), 0)
     return results
 
-time.sleep(2)  # wait for browser to finish opening
+def capture_hwnd(hwnd, path):
+    """Capture a window via PrintWindow — no focus needed, works with GPU-rendered Chrome/Edge."""
+    SW_RESTORE = 9
+    user32.ShowWindow(hwnd, SW_RESTORE)
+    time.sleep(0.8)
 
-# Step 1: minimize Claude Code / terminal windows
-terminal_fragments = ["Build new features", "Claude Code", "Windows PowerShell", "cmd.exe"]
-for hwnd, title in enum_windows():
-    if any(f in title for f in terminal_fragments):
-        user32.ShowWindow(hwnd, SW_MINIMIZE)
+    rect = wt.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    width  = rect.right  - rect.left
+    height = rect.bottom - rect.top
+    if width <= 0 or height <= 0:
+        return False
 
-time.sleep(1)  # let minimization settle, then re-enumerate
+    hwndDC = user32.GetWindowDC(hwnd)
+    memDC  = gdi32.CreateCompatibleDC(hwndDC)
+    bitmap = gdi32.CreateCompatibleBitmap(hwndDC, width, height)
+    gdi32.SelectObject(memDC, bitmap)
 
-# Step 2: find browser AFTER minimizing terminal (fresh enum)
+    # PW_RENDERFULLCONTENT = 2 captures GPU/hardware-accelerated content (Chrome, Edge)
+    user32.PrintWindow(hwnd, memDC, 2)
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [
+            ("biSize",          ctypes.c_uint32),
+            ("biWidth",         ctypes.c_int32),
+            ("biHeight",        ctypes.c_int32),
+            ("biPlanes",        ctypes.c_uint16),
+            ("biBitCount",      ctypes.c_uint16),
+            ("biCompression",   ctypes.c_uint32),
+            ("biSizeImage",     ctypes.c_uint32),
+            ("biXPelsPerMeter", ctypes.c_int32),
+            ("biYPelsPerMeter", ctypes.c_int32),
+            ("biClrUsed",       ctypes.c_uint32),
+            ("biClrImportant",  ctypes.c_uint32),
+        ]
+
+    class BITMAPINFO(ctypes.Structure):
+        _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", ctypes.c_uint32 * 3)]
+
+    bmi = BITMAPINFO()
+    bmi.bmiHeader.biSize        = ctypes.sizeof(BITMAPINFOHEADER)
+    bmi.bmiHeader.biWidth       = width
+    bmi.bmiHeader.biHeight      = -height  # negative = top-down bitmap
+    bmi.bmiHeader.biPlanes      = 1
+    bmi.bmiHeader.biBitCount    = 32
+    bmi.bmiHeader.biCompression = 0  # BI_RGB
+
+    buf = (ctypes.c_byte * (width * height * 4))()
+    gdi32.GetDIBits(memDC, bitmap, 0, height, buf, ctypes.byref(bmi), 0)
+
+    img = Image.frombytes("RGBA", (width, height), bytes(buf), "raw", "BGRA")
+    img.save(path)
+
+    gdi32.DeleteObject(bitmap)
+    gdi32.DeleteDC(memDC)
+    user32.ReleaseDC(hwnd, hwndDC)
+    return True
+
+time.sleep(2)
+
 browser_fragments = [
     "AI Bookkeeping Specialist", "localhost:8501", "bookkeeping-specialist",
-    "GitHub", "Streamlit",
+    "Streamlit", "index.html", "GitHub",
 ]
+
 all_wins = enum_windows()
 target = None
+
+# Priority: app-specific titles first
 for hwnd, title in all_wins:
     if any(f in title for f in browser_fragments):
         target = hwnd
         break
 
-# Fallback: any visible Chrome/Edge window
+# Fallback: any Chrome / Edge / Firefox window
 if not target:
     for hwnd, title in all_wins:
-        if "Chrome" in title or "Edge" in title:
+        if any(b in title for b in ("Chrome", "Edge", "Firefox")):
             target = hwnd
             break
 
 if target:
-    fg      = user32.GetForegroundWindow()
-    fg_tid  = user32.GetWindowThreadProcessId(fg, None)
-    my_tid  = kernel32.GetCurrentThreadId()
-    tgt_tid = user32.GetWindowThreadProcessId(target, None)
-    user32.AttachThreadInput(my_tid, fg_tid,  True)
-    user32.AttachThreadInput(my_tid, tgt_tid, True)
-    user32.ShowWindow(target, SW_MAXIMIZE)
-    user32.BringWindowToTop(target)
-    user32.SetForegroundWindow(target)
-    user32.AttachThreadInput(my_tid, fg_tid,  False)
-    user32.AttachThreadInput(my_tid, tgt_tid, False)
-    time.sleep(1.5)
+    ok = capture_hwnd(target, out_path)
+    if ok:
+        sys.exit(0)
 
-    if refresh:
-        VK_CTRL, VK_R = 0x11, 0x52
-        user32.keybd_event(VK_CTRL, 0, 0, 0)
-        user32.keybd_event(VK_R,    0, 0, 0)
-        time.sleep(0.05)
-        user32.keybd_event(VK_R,    0, 2, 0)
-        user32.keybd_event(VK_CTRL, 0, 2, 0)
-        time.sleep(4)
-
+# Last resort: full-screen grab
 ImageGrab.grab().save(out_path)
