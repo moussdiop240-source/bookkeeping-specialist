@@ -467,43 +467,45 @@ for key, val in defaults.items():
 
 # --- 2. AUTHENTICATION GATE ---
 if not st.session_state.auth:
-    st.markdown("""
-    <div style="text-align:center; padding:60px 0 32px;">
-        <div style="font-size:3.2rem; margin-bottom:12px;">📊</div>
-        <h1 style="
-            font-size:2.6rem; font-weight:900; border:none; margin:0;
-            background:linear-gradient(135deg,#00C896 0%,#0070F3 100%);
-            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-        ">AI Bookkeeping Specialist</h1>
-        <p style="color:#546880; font-size:1rem; margin-top:8px; letter-spacing:0.04em;">
-            Professional-grade accounting intelligence &nbsp;·&nbsp; 2026 IRS &amp; GAAP Compliant
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_l, col_c, col_r = st.columns([1, 1.4, 1])
+    st.markdown(
+        "<style>.block-container{padding-top:0 !important; padding-bottom:0 !important;}</style>",
+        unsafe_allow_html=True
+    )
+    _, col_c, _ = st.columns([1, 1.4, 1])
     with col_c:
         st.markdown("""
-        <div style="
-            background:linear-gradient(145deg,#101C2E,#0C1526);
-            border:1px solid #162032; border-radius:16px;
-            padding:32px 36px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
-        ">
-            <p style="color:#8A9BB5; font-size:0.78rem; text-transform:uppercase;
-               letter-spacing:0.1em; margin-bottom:4px;">Secure Local Access</p>
-            <h3 style="color:#F0F4FA; margin:0 0 20px; font-size:1.3rem;">
-                Professional Portal
-            </h3>
+        <div style="text-align:center; padding:40px 0 14px;">
+            <div style="
+                font-size:1.9rem; font-weight:900; line-height:1.1;
+                background:linear-gradient(135deg,#00C896 0%,#0070F3 100%);
+                -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+                margin-bottom:18px;
+            ">📊 AI Bookkeeping Specialist</div>
+            <div style="
+                background:linear-gradient(145deg,#101C2E,#0C1526);
+                border:1px solid #162032; border-radius:16px;
+                padding:18px 24px 14px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+                text-align:left; margin-bottom:10px;
+            ">
+                <div style="color:#546880; font-size:0.7rem; text-transform:uppercase;
+                     letter-spacing:0.12em; margin-bottom:4px;">Secure Local Access</div>
+                <div style="color:#F0F4FA; font-size:1.15rem; font-weight:700;">
+                    Professional Portal
+                </div>
+                <div style="color:#2A3A50; font-size:0.72rem; margin-top:6px;">
+                    2026 IRS &amp; GAAP Compliant &nbsp;·&nbsp; 100% Local
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         if st.button("🔓  Access Portal", use_container_width=True):
             st.session_state.auth = True
             st.rerun()
-        st.markdown("""
-        <p style="text-align:center; color:#2A3A50; font-size:0.72rem; margin-top:12px;">
-            🔒 100% local deployment · No cloud sync · SHA-256 ledger integrity
-        </p>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            "<p style='text-align:center; color:#2A3A50; font-size:0.68rem; margin-top:8px;'>"
+            "🔒 No cloud sync &nbsp;·&nbsp; SHA-256 ledger integrity</p>",
+            unsafe_allow_html=True
+        )
     st.stop()
 
 # --- 3. DATA PERSISTENCE ENGINE ---
