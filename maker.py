@@ -18,8 +18,10 @@ except ImportError:
 from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
-VAULT    = "vault"
-REGISTRY = os.path.join(VAULT, "registry.db")
+VAULT        = "vault"
+REGISTRY     = os.path.join(VAULT, "registry.db")
+OLLAMA_BASE  = "http://localhost:11434"
+OLLAMA_MODEL = "llama3:8b"
 
 # --- PREMIUM THEME ---
 THEME_CSS = """<style>
@@ -369,27 +371,52 @@ def _renew_license(cid):
     conn.commit()
     conn.close()
 
-def _ollama_online(retries: int = 3, per_timeout: int = 10) -> bool:
-    """Try up to `retries` times before declaring Ollama offline."""
+@st.cache_data(ttl=30)
+def _ollama_status() -> str:
+    """Cached sidebar probe. Returns 'online', 'no_model', or 'offline'."""
+    try:
+        r = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=5)
+        if r.status_code != 200:
+            return "offline"
+        installed = [m["name"] for m in r.json().get("models", [])]
+        if not any(OLLAMA_MODEL in m for m in installed):
+            return "no_model"
+        return "online"
+    except Exception:
+        return "offline"
+
+def _ollama_model_ready(retries: int = 3, per_timeout: int = 10) -> str:
+    """Full readiness check for the AI chat page.
+    Returns 'ready', 'warming' (model loading), or 'offline'."""
+    tags_resp = None
     for attempt in range(retries):
         try:
-            r = requests.get('http://localhost:11434/api/tags', timeout=per_timeout)
-            if r.status_code == 200:
-                return True
+            tags_resp = requests.get(f"{OLLAMA_BASE}/api/tags", timeout=per_timeout)
+            if tags_resp.status_code == 200:
+                break
         except Exception:
             pass
         if attempt < retries - 1:
             time.sleep(2)
-    return False
+    else:
+        return "offline"
 
-@st.cache_data(ttl=30)
-def _ollama_status() -> bool:
-    """Cached 30-second sidebar status check (single fast probe)."""
+    installed = [m["name"] for m in tags_resp.json().get("models", [])]
+    if not any(OLLAMA_MODEL in m for m in installed):
+        return "offline"
+
+    # Quick generation probe — timeout means model is still warming up
     try:
-        r = requests.get('http://localhost:11434/api/tags', timeout=5)
-        return r.status_code == 200
+        probe = requests.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={"model": OLLAMA_MODEL, "prompt": "1+1=", "stream": False},
+            timeout=8,
+        )
+        return "ready" if probe.status_code == 200 else "warming"
+    except requests.exceptions.Timeout:
+        return "warming"
     except Exception:
-        return False
+        return "offline"
 
 def _gate():
     """Block expired/hard-stopped clients. Show trial banner for active trials."""
@@ -527,13 +554,22 @@ def load_db():
 
 def get_ai_category(description):
     try:
-        res = requests.post('http://localhost:11434/api/generate',
-            json={'model': 'llama3.2:1b',
-                  'prompt': f'Given the transaction description "{description}", provide a single-word GAAP accounting category (e.g., Office, Travel, Software, Meals). Return ONLY the word.',
-                  'stream': False}, timeout=10)
-        return res.json().get('response', 'Uncategorized').strip().split()[0]
+        res = requests.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": (
+                    f'Given the transaction description "{description}", provide a '
+                    f'single-word GAAP accounting category (e.g., Office, Travel, '
+                    f'Software, Meals). Return ONLY the word.'
+                ),
+                "stream": False,
+            },
+            timeout=10,
+        )
+        return res.json().get("response", "Uncategorized").strip().split()[0]
     except Exception:
-        return 'Uncategorized'
+        return "Uncategorized"
 
 df = load_db()
 
@@ -569,9 +605,13 @@ with st.sidebar:
         unsafe_allow_html=True
     )
     # Ollama connection status light
-    _ai_up = _ollama_status()
-    _dot   = "#00C896" if _ai_up else "#EF4444"
-    _label = "AI Engine Online" if _ai_up else "AI Engine Offline"
+    _ai_status = _ollama_status()
+    _dot_cfg = {
+        "online":   ("#00C896", f"AI Online · {OLLAMA_MODEL}"),
+        "no_model": ("#F59E0B", f"{OLLAMA_MODEL} not found"),
+        "offline":  ("#EF4444", "AI Engine Offline"),
+    }
+    _dot, _label = _dot_cfg.get(_ai_status, ("#EF4444", "AI Engine Offline"))
     st.markdown(
         f"<div style='margin-top:10px; font-size:0.72rem;'>"
         f"<span style='display:inline-block; width:8px; height:8px; border-radius:50%; "
@@ -580,7 +620,10 @@ with st.sidebar:
         f"<span style='color:{_dot}; font-weight:600;'>{_label}</span></div>",
         unsafe_allow_html=True
     )
-    st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+    if st.button("🔄 Retry AI Connection", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+    st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
 
     if st.button("🚪 Logout"):
         st.session_state.auth = False
@@ -1058,10 +1101,15 @@ elif st.session_state.page == "💬 AI CFO Chat":
         st.chat_input("Select a client first to unlock the auditor...", disabled=True)
         st.stop()
 
-    # Guard 2: Ollama must be reachable (3 retries × 10s timeout each)
-    if not _ollama_online(retries=3, per_timeout=10):
-        st.error("AI Engine Offline — Ollama is not running.")
-        st.markdown("""
+    # Guard 2: Ollama + model readiness check
+    _readiness = _ollama_model_ready(retries=3, per_timeout=10)
+    if _readiness == "warming":
+        with st.spinner(f"Model warming up — {OLLAMA_MODEL} is loading into memory…"):
+            time.sleep(6)
+        st.rerun()
+    elif _readiness == "offline":
+        st.error(f"AI Engine Offline — Ollama is not running or {OLLAMA_MODEL} is not installed.")
+        st.markdown(f"""
 **Follow these steps to start the AI engine:**
 
 **Step 1:** Open a new Terminal (PowerShell or Command Prompt)
@@ -1071,9 +1119,18 @@ elif st.session_state.page == "💬 AI CFO Chat":
 ollama serve
 ```
 
-**Step 3:** Wait until you see: `Listening on 127.0.0.1:11434`
+**Step 3:** Wait until you see: `Listening on localhost:11434`
 
-**Step 4:** Come back here and refresh the page.
+**Step 4:** Confirm the model is installed:
+```
+ollama list
+```
+You should see **{OLLAMA_MODEL}** in the list. If not, run:
+```
+ollama pull {OLLAMA_MODEL}
+```
+
+**Step 5:** Come back here and click **🔄 Retry AI Connection** in the sidebar.
         """)
         st.stop()
 
@@ -1118,9 +1175,9 @@ ollama serve
                 )
                 full_prompt = f"{system_prompt}\n\nUser Question: {prompt}"
                 res = requests.post(
-                    'http://localhost:11434/api/generate',
-                    json={'model': 'llama3.2:latest', 'prompt': full_prompt, 'stream': False},
-                    timeout=60
+                    f"{OLLAMA_BASE}/api/generate",
+                    json={"model": OLLAMA_MODEL, "prompt": full_prompt, "stream": False},
+                    timeout=60,
                 )
                 ans = res.json()['response']
                 st.markdown(ans)
