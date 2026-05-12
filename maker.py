@@ -14,13 +14,11 @@ try:
 except ImportError:
     FPDF_AVAILABLE = False
 
+from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE
+
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
 VAULT    = "vault"
 REGISTRY = os.path.join(VAULT, "registry.db")
-
-TRIAL_DAYS  = 14
-SETUP_FEE   = 299.00
-MONTHLY_FEE = 49.99
 
 # --- PREMIUM THEME ---
 THEME_CSS = """<style>
@@ -323,21 +321,59 @@ def _renew_license(cid):
     conn.close()
 
 def _gate():
-    """Block expired clients. Show trial banner for active trials."""
-    lic = st.session_state.get("license", {})
+    """Block expired/hard-stopped clients. Show trial banner for active trials."""
+    today = datetime.today().date()
+
+    # Hard-stop: lock everyone regardless of plan
+    if HARD_STOP_DATE:
+        hard_stop = datetime.fromisoformat(HARD_STOP_DATE).date()
+        if today >= hard_stop:
+            st.markdown("""
+            <div style="text-align:center; padding:60px 0 24px;">
+                <div style="font-size:3rem; margin-bottom:12px;">🔒</div>
+                <h2 style="color:#EF4444; font-weight:800; margin:0;">Subscription Expired</h2>
+                <p style="color:#546880; margin-top:10px; font-size:0.95rem;">
+                    Your access period has ended.<br>
+                    Contact your administrator or renew your subscription to continue.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            col_l, col_c, col_r = st.columns([1, 1.2, 1])
+            with col_c:
+                if st.button("💳 Go to Subscription", use_container_width=True):
+                    st.session_state.page = "💳 Subscription"
+                    st.rerun()
+            st.stop()
+
+    lic  = st.session_state.get("license", {})
     plan = lic.get("plan", "none")
     days = lic.get("days_remaining", 0)
-    if plan == "expired":
-        st.error("⛔ Subscription Expired")
-        st.markdown(
-            "Your access has lapsed. Renew your subscription to continue.\n\n"
-            "Navigate to **💳 Subscription** in the sidebar."
-        )
+
+    # Expired plan or trial that ran out
+    if plan == "expired" or (plan == "trial" and days <= 0):
+        st.markdown("""
+        <div style="text-align:center; padding:60px 0 24px;">
+            <div style="font-size:3rem; margin-bottom:12px;">🔒</div>
+            <h2 style="color:#EF4444; font-weight:800; margin:0;">Subscription Expired</h2>
+            <p style="color:#546880; margin-top:10px; font-size:0.95rem;">
+                Your trial or subscription has ended.<br>
+                Activate or renew to regain full access.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        col_l, col_c, col_r = st.columns([1, 1.2, 1])
+        with col_c:
+            if st.button("💳 Activate Subscription", use_container_width=True):
+                st.session_state.page = "💳 Subscription"
+                st.rerun()
         st.stop()
+
     if plan == "none":
         st.warning("No license found for this client. Contact support.")
         st.stop()
-    if plan == "trial":
+
+    # Active trial — show banner but allow through
+    if plan == "trial" and days > 0:
         st.warning(f"⚠️ **Trial Mode** — {days} day(s) remaining. "
                    "Upgrade to unlock permanent access.")
 
