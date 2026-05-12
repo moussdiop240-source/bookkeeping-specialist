@@ -16,7 +16,10 @@ try:
 except ImportError:
     FPDF_AVAILABLE = False
 
+import io
 import json
+import zipfile
+import tempfile
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -555,6 +558,41 @@ def _migrate_legacy():
             count += 1
     return count
 
+# --- BACKUP / RESTORE ---
+def _build_vault_zip() -> bytes:
+    """Zip the entire vault directory (all clients + registry) into memory."""
+    buf = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024)
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(VAULT):
+            for fname in files:
+                full = os.path.join(root, fname)
+                arc  = os.path.relpath(full, start=os.path.dirname(VAULT))
+                zf.write(full, arc)
+    buf.seek(0)
+    return buf.read()
+
+def _restore_vault_zip(zip_bytes: bytes) -> tuple[int, list[str]]:
+    """Extract a backup ZIP into the vault directory. Returns (files_restored, errors)."""
+    errors  = []
+    restored = 0
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for member in zf.infolist():
+                if member.is_dir():
+                    continue
+                # Only allow vault/ paths; block path traversal
+                if not member.filename.startswith("vault/"):
+                    errors.append(f"Skipped (outside vault): {member.filename}")
+                    continue
+                dest = os.path.join(os.path.dirname(VAULT), member.filename)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with zf.open(member) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                restored += 1
+    except Exception as e:
+        errors.append(str(e))
+    return restored, errors
+
 # --- REVENUE ENGINE ---
 def _get_revenue(cid):
     """Return total revenue for a client (sum of all entries)."""
@@ -780,6 +818,8 @@ defaults = {
     'stripe_plan_type': "",
     'last_pdf_bytes': None,
     'last_pdf_fname': "",
+    '_backup_bytes': None,
+    '_backup_fname': "",
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -1136,6 +1176,53 @@ elif st.session_state.page == "🏢 Client Management":
             st.session_state.active_name = row["name"]
             st.session_state.license     = _get_license(cid)
             st.rerun()
+
+    st.divider()
+
+    # --- Backup & Restore ---
+    st.subheader("🔒 Vault Backup & Restore")
+    st.caption("All client ledgers, the registry, and settings are stored in the `vault/` directory. "
+               "Back up regularly — especially before system updates.")
+
+    bk_col, rs_col = st.columns(2)
+
+    with bk_col:
+        st.markdown("**📦 Export Backup**")
+        st.markdown("Download the full vault as an encrypted ZIP. "
+                    "Store it in a safe location (external drive, encrypted cloud).")
+        if st.button("⬇️ Generate Vault Backup", use_container_width=True):
+            with st.spinner("Zipping vault…"):
+                try:
+                    zip_bytes = _build_vault_zip()
+                    fname = f"vault_backup_{datetime.today().strftime('%Y%m%d_%H%M%S')}.zip"
+                    st.session_state["_backup_bytes"] = zip_bytes
+                    st.session_state["_backup_fname"] = fname
+                    st.success(f"Backup ready — {len(zip_bytes) / 1024:.1f} KB")
+                except Exception as e:
+                    st.error(f"Backup failed: {e}")
+
+        if st.session_state.get("_backup_bytes"):
+            st.download_button(
+                label="💾 Download Backup ZIP",
+                data=st.session_state["_backup_bytes"],
+                file_name=st.session_state.get("_backup_fname", "vault_backup.zip"),
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+    with rs_col:
+        st.markdown("**♻️ Restore from Backup**")
+        st.markdown("Upload a previously exported backup ZIP to restore all client data.")
+        up_zip = st.file_uploader("Upload vault_backup_*.zip", type=["zip"], key="vault_restore_up")
+        if up_zip and st.button("🔄 Restore Vault", use_container_width=True):
+            with st.spinner("Restoring…"):
+                n, errs = _restore_vault_zip(up_zip.read())
+                if errs:
+                    st.warning(f"Restored {n} file(s) with {len(errs)} warning(s):")
+                    for e in errs:
+                        st.caption(f"• {e}")
+                else:
+                    st.success(f"✅ Restored {n} file(s). Reload the app to see updated clients.")
 
 # --- PHASE: GLOBAL CLIENT CHECK — welcome screen ---
 elif not st.session_state.active_uuid:
