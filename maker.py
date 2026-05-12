@@ -18,9 +18,165 @@ except ImportError:
 VAULT    = "vault"
 REGISTRY = os.path.join(VAULT, "registry.db")
 
-TRIAL_DAYS   = 14
-SETUP_FEE    = 299.00
-MONTHLY_FEE  = 49.99
+TRIAL_DAYS  = 14
+SETUP_FEE   = 299.00
+MONTHLY_FEE = 49.99
+
+# --- PREMIUM THEME ---
+THEME_CSS = """<style>
+/* =====================================================
+   AI BOOKKEEPING SPECIALIST — PREMIUM DARK THEME
+   ===================================================== */
+
+/* Base & background */
+.stApp, .main { background-color: #080D18 !important; }
+.main .block-container { padding-top: 1.5rem; max-width: 1180px; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0C1526 0%, #080D18 100%) !important;
+    border-right: 1px solid #162032 !important;
+}
+section[data-testid="stSidebar"] * { color: #8A9BB5; }
+
+/* Sidebar nav radio items */
+div[data-testid="stSidebar"] .stRadio label {
+    display: block; padding: 6px 12px;
+    border-radius: 7px; font-size: 0.86rem; font-weight: 500;
+    color: #8A9BB5 !important; transition: background 0.15s, color 0.15s;
+}
+div[data-testid="stSidebar"] .stRadio label:hover {
+    background: #162032; color: #E2EAF4 !important;
+}
+
+/* Typography */
+h1 {
+    color: #F0F4FA !important; font-weight: 800 !important;
+    font-size: 1.75rem !important; border-bottom: 2px solid #00C896;
+    padding-bottom: 0.5rem; margin-bottom: 1.2rem !important;
+}
+h2, h3 { color: #DDE6F0 !important; font-weight: 600 !important; }
+p, li, .stMarkdown { color: #B8C5D6; }
+.stCaption p, small { color: #546880 !important; font-size: 0.78rem !important; }
+
+/* Metric cards — glass effect */
+div[data-testid="metric-container"] {
+    background: linear-gradient(145deg, #101C2E, #0C1526) !important;
+    border: 1px solid #162032 !important; border-radius: 14px !important;
+    padding: 1rem 1.3rem !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: border-color 0.2s, transform 0.2s;
+}
+div[data-testid="metric-container"]:hover {
+    border-color: #00C896 !important; transform: translateY(-2px);
+}
+div[data-testid="stMetricValue"] > div {
+    color: #00C896 !important; font-weight: 700 !important; font-size: 1.6rem !important;
+}
+div[data-testid="stMetricLabel"] p {
+    color: #546880 !important; font-size: 0.72rem !important;
+    text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #00C896 0%, #0070F3 100%) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 8px !important; font-weight: 600 !important;
+    letter-spacing: 0.3px; padding: 0.45rem 1.3rem !important;
+    transition: box-shadow 0.2s, transform 0.15s !important;
+}
+.stButton > button:hover {
+    box-shadow: 0 0 22px rgba(0,200,150,0.38) !important; transform: translateY(-1px);
+}
+.stButton > button:active { transform: translateY(0); }
+
+/* Download button — distinct style */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, #0070F3 0%, #7C3AED 100%) !important;
+}
+.stDownloadButton > button:hover {
+    box-shadow: 0 0 22px rgba(0,112,243,0.4) !important;
+}
+
+/* Text inputs */
+.stTextInput input, .stTextArea textarea {
+    background-color: #101C2E !important; color: #DDE6F0 !important;
+    border: 1px solid #213044 !important; border-radius: 8px !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: #00C896 !important;
+    box-shadow: 0 0 0 3px rgba(0,200,150,0.12) !important;
+}
+
+/* Selectbox */
+div[data-baseweb="select"] > div {
+    background-color: #101C2E !important; border: 1px solid #213044 !important;
+    border-radius: 8px !important; color: #DDE6F0 !important;
+}
+div[data-baseweb="select"] svg { color: #546880; }
+
+/* Tabs */
+button[data-baseweb="tab"] {
+    color: #546880 !important; font-weight: 500 !important;
+    font-size: 0.88rem !important; transition: color 0.15s;
+}
+button[data-baseweb="tab"]:hover { color: #B8C5D6 !important; }
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #00C896 !important; font-weight: 700 !important;
+}
+div[data-baseweb="tab-highlight"] { background: #00C896 !important; }
+div[data-baseweb="tab-border"]    { background: #162032 !important; }
+
+/* Expanders */
+details > summary {
+    background: #101C2E !important; border: 1px solid #162032 !important;
+    border-radius: 8px !important; color: #DDE6F0 !important;
+    font-weight: 600; padding: 10px 16px !important;
+    transition: border-color 0.2s;
+}
+details[open] > summary { border-color: #00C896 !important; border-radius: 8px 8px 0 0 !important; }
+details > div {
+    background: #101C2E !important; border: 1px solid #162032 !important;
+    border-top: none !important; border-radius: 0 0 8px 8px !important; padding: 14px !important;
+}
+
+/* DataFrames */
+.stDataFrame { border-radius: 12px !important; overflow: hidden !important;
+               border: 1px solid #162032 !important; }
+
+/* Dividers */
+hr { border-color: #162032 !important; margin: 1.2rem 0 !important; }
+
+/* Progress bar */
+.stProgress > div > div { background: linear-gradient(90deg, #00C896, #0070F3) !important; }
+
+/* File uploader */
+section[data-testid="stFileUploadDropzone"] {
+    background: #101C2E !important; border: 2px dashed #213044 !important;
+    border-radius: 12px !important; transition: border-color 0.2s;
+}
+section[data-testid="stFileUploadDropzone"]:hover { border-color: #00C896 !important; }
+
+/* Chat messages */
+div[data-testid="stChatMessageContent"] {
+    background: #101C2E; border: 1px solid #162032;
+    border-radius: 12px; padding: 12px;
+}
+div[data-testid="stChatInput"] textarea {
+    background: #101C2E !important; border-color: #213044 !important;
+    color: #DDE6F0 !important; border-radius: 12px !important;
+}
+
+/* Alerts */
+div[data-testid="stAlert"] { border-radius: 10px !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #080D18; }
+::-webkit-scrollbar-thumb { background: #162032; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #213044; }
+</style>"""
 
 def _init_vault():
     os.makedirs(VAULT, exist_ok=True)
@@ -186,7 +342,8 @@ def _gate():
                    "Upgrade to unlock permanent access.")
 
 _init_vault()
-st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide")
+st.set_page_config(page_title="AI Bookkeeping Specialist", layout="wide", page_icon="📊")
+st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 # Force initialize all keys to prevent AttributeError
 defaults = {
@@ -203,15 +360,43 @@ for key, val in defaults.items():
 
 # --- 2. AUTHENTICATION GATE ---
 if not st.session_state.auth:
-    st.title("🛡️ AI Bookkeeping Specialist")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Professional Login")
-        if st.button("Access Portal"):
+    st.markdown("""
+    <div style="text-align:center; padding:60px 0 32px;">
+        <div style="font-size:3.2rem; margin-bottom:12px;">📊</div>
+        <h1 style="
+            font-size:2.6rem; font-weight:900; border:none; margin:0;
+            background:linear-gradient(135deg,#00C896 0%,#0070F3 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        ">AI Bookkeeping Specialist</h1>
+        <p style="color:#546880; font-size:1rem; margin-top:8px; letter-spacing:0.04em;">
+            Professional-grade accounting intelligence &nbsp;·&nbsp; 2026 IRS &amp; GAAP Compliant
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_c, col_r = st.columns([1, 1.4, 1])
+    with col_c:
+        st.markdown("""
+        <div style="
+            background:linear-gradient(145deg,#101C2E,#0C1526);
+            border:1px solid #162032; border-radius:16px;
+            padding:32px 36px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+        ">
+            <p style="color:#8A9BB5; font-size:0.78rem; text-transform:uppercase;
+               letter-spacing:0.1em; margin-bottom:4px;">Secure Local Access</p>
+            <h3 style="color:#F0F4FA; margin:0 0 20px; font-size:1.3rem;">
+                Professional Portal
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🔓  Access Portal", use_container_width=True):
             st.session_state.auth = True
             st.rerun()
-    with c2:
-        st.info("Local Deployment Active: Cloud Sync Disabled.")
+        st.markdown("""
+        <p style="text-align:center; color:#2A3A50; font-size:0.72rem; margin-top:12px;">
+            🔒 100% local deployment · No cloud sync · SHA-256 ledger integrity
+        </p>
+        """, unsafe_allow_html=True)
     st.stop()
 
 # --- 3. DATA PERSISTENCE ENGINE ---
@@ -245,19 +430,36 @@ df = load_db()
 
 # --- 4. NAVIGATION CONTROL ---
 with st.sidebar:
-    st.title(f"👤 {st.session_state.active_name}")
+    st.markdown("""
+    <div style="padding:18px 4px 10px; border-bottom:1px solid #162032; margin-bottom:14px;">
+        <div style="
+            font-size:1.05rem; font-weight:800; letter-spacing:0.02em;
+            background:linear-gradient(135deg,#00C896,#0070F3);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        ">📊 AI Bookkeeping</div>
+        <div style="font-size:0.7rem; color:#2A3A50; letter-spacing:0.06em;
+                    text-transform:uppercase; margin-top:2px;">Specialist · 2026 Edition</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown(f"<div style='color:#8A9BB5; font-size:0.82rem; margin-bottom:4px;'>"
+                f"👤 <strong style='color:#DDE6F0'>{st.session_state.active_name}</strong></div>",
+                unsafe_allow_html=True)
     # License status badge
     _lic = st.session_state.get("license", {})
-    _plan, _days = _lic.get("plan", "—"), _lic.get("days_remaining", 0)
-    if _plan == "active":
-        _badge = f"🟢 Active ({_days}d left)" if _days < 10 else "🟢 Active"
-    elif _plan == "trial":
-        _badge = f"🟡 Trial ({_days}d left)"
-    elif _plan == "expired":
-        _badge = "🔴 Expired"
-    else:
-        _badge = "⚪ No License"
-    st.caption(_badge)
+    _plan, _days = _lic.get("plan", ""), _lic.get("days_remaining", 0)
+    _pill_styles = {
+        "active":  ("🟢", "#00C896", "#011F14", f"Active · {_days}d" if _days < 10 else "Active"),
+        "trial":   ("🟡", "#F59E0B", "#1A1200", f"Trial · {_days}d left"),
+        "expired": ("🔴", "#EF4444", "#1A0000", "Expired"),
+    }
+    _ico, _fg, _bg, _txt = _pill_styles.get(_plan, ("⚪", "#546880", "#101C2E", "No License"))
+    st.markdown(
+        f"<span style='background:{_bg}; color:{_fg}; border:1px solid {_fg}33; "
+        f"border-radius:20px; padding:2px 10px; font-size:0.72rem; font-weight:600; "
+        f"letter-spacing:0.05em;'>{_ico} {_txt}</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
 
     if st.button("🚪 Logout"):
         st.session_state.auth = False
