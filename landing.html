@@ -5,682 +5,837 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Bookkeeping Specialist — 2026 IRS & GAAP Compliant</title>
   <meta name="description" content="AI-powered bookkeeping with agentic debate, full PDF reports, email delivery, and Stripe payments. 100% local. 2026 IRS & GAAP compliant." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
-    /* ── Reset & Base ─────────────────────────────────────────── */
+    /* ─── Reset ─────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:       #080D18;
-      --bg2:      #0C1526;
-      --bg3:      #101C2E;
-      --border:   #162032;
-      --border2:  #213044;
-      --teal:     #00C896;
-      --blue:     #0070F3;
-      --purple:   #7C3AED;
-      --red:      #EF4444;
-      --amber:    #F59E0B;
-      --text:     #F0F4FA;
-      --text2:    #DDE6F0;
-      --text3:    #8A9BB5;
-      --text4:    #546880;
-      --grad:     linear-gradient(135deg, #00C896 0%, #0070F3 100%);
+      --bg:      #060B16;
+      --bg2:     #0A1220;
+      --bg3:     #0E1828;
+      --card:    rgba(14,24,40,0.7);
+      --border:  rgba(255,255,255,0.06);
+      --border2: rgba(255,255,255,0.10);
+      --teal:    #00C896;
+      --teal2:   #00E5AD;
+      --blue:    #0070F3;
+      --purple:  #7C3AED;
+      --red:     #EF4444;
+      --amber:   #F59E0B;
+      --text:    #F0F4FA;
+      --text2:   #C8D6E8;
+      --text3:   #7A90AA;
+      --text4:   #3E5268;
+      --grad:    linear-gradient(135deg,#00C896 0%,#0070F3 100%);
+      --grad2:   linear-gradient(135deg,#00E5AD 0%,#3B8EF4 100%);
+      --glow:    0 0 40px rgba(0,200,150,0.18);
     }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; font-size: 16px; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text2);
-      line-height: 1.6;
+      line-height: 1.65;
       overflow-x: hidden;
     }
     a { color: inherit; text-decoration: none; }
-    img { display: block; max-width: 100%; }
 
-    /* ── Utility ──────────────────────────────────────────────── */
-    .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+    /* ─── Background grid ────────────────────────────────────── */
+    body::before {
+      content: "";
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,200,150,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,200,150,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    /* ─── Utility ────────────────────────────────────────────── */
+    .container { max-width: 1160px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
     .grad-text {
       background: var(--grad);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--bg3); border: 1px solid var(--border2);
-      border-radius: 999px; padding: 4px 14px;
-      font-size: 0.78rem; font-weight: 600; color: var(--text3);
-      letter-spacing: 0.04em;
-    }
-    .badge span { color: var(--teal); }
 
-    /* ── Navigation ───────────────────────────────────────────── */
+    /* ─── Navigation ─────────────────────────────────────────── */
     nav {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-      background: rgba(8, 13, 24, 0.85);
-      backdrop-filter: blur(12px);
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
       border-bottom: 1px solid var(--border);
+      background: rgba(6,11,22,0.75);
+      backdrop-filter: blur(20px) saturate(180%);
     }
     .nav-inner {
       display: flex; align-items: center; justify-content: space-between;
-      height: 64px;
+      height: 62px;
     }
     .nav-logo {
-      font-size: 1.05rem; font-weight: 800; letter-spacing: 0.01em;
+      font-size: 1rem; font-weight: 800; letter-spacing: -0.01em;
+      display: flex; align-items: center; gap: 8px;
     }
     .nav-links {
-      display: flex; gap: 32px; list-style: none;
+      display: flex; gap: 36px; list-style: none;
     }
     .nav-links a {
-      font-size: 0.88rem; font-weight: 500; color: var(--text3);
+      font-size: 0.875rem; font-weight: 500; color: var(--text3);
       transition: color 0.15s;
     }
     .nav-links a:hover { color: var(--text); }
+
+    /* ─── Buttons ────────────────────────────────────────────── */
     .btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 10px 24px; border-radius: 8px;
-      font-weight: 600; font-size: 0.9rem; cursor: pointer;
-      transition: box-shadow 0.2s, transform 0.15s;
-      border: none;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 10px 22px; border-radius: 10px;
+      font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      transition: all 0.2s; border: none; white-space: nowrap;
     }
     .btn-primary {
       background: var(--grad); color: #fff;
+      box-shadow: 0 0 0 0 rgba(0,200,150,0);
     }
     .btn-primary:hover {
-      box-shadow: 0 0 28px rgba(0,200,150,0.4);
-      transform: translateY(-1px);
+      box-shadow: 0 0 28px rgba(0,200,150,0.45), 0 4px 20px rgba(0,0,0,0.4);
+      transform: translateY(-2px);
     }
-    .btn-outline {
-      background: transparent;
+    .btn-ghost {
+      background: rgba(255,255,255,0.05);
       border: 1px solid var(--border2); color: var(--text2);
     }
-    .btn-outline:hover {
-      border-color: var(--teal); color: var(--teal);
-      transform: translateY(-1px);
+    .btn-ghost:hover {
+      background: rgba(255,255,255,0.09); border-color: var(--teal);
+      color: var(--teal); transform: translateY(-1px);
     }
+    .btn-lg { padding: 14px 30px; font-size: 1rem; border-radius: 12px; }
 
-    /* ── Hero ─────────────────────────────────────────────────── */
+    /* ─── Hero ───────────────────────────────────────────────── */
     .hero {
-      padding: 140px 0 96px;
-      position: relative; overflow: hidden;
+      padding: 148px 0 100px;
+      position: relative; text-align: center;
     }
-    .hero::before {
-      content: "";
-      position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
-      width: 900px; height: 900px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(0,200,150,0.07) 0%, transparent 70%);
+    /* Radial glow orb */
+    .hero-orb {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse at center,
+        rgba(0,200,150,0.10) 0%,
+        rgba(0,112,243,0.06) 40%,
+        transparent 70%);
       pointer-events: none;
     }
     .hero-eyebrow {
-      display: flex; justify-content: center; margin-bottom: 28px;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(0,200,150,0.08);
+      border: 1px solid rgba(0,200,150,0.25);
+      border-radius: 999px; padding: 6px 16px;
+      font-size: 0.78rem; font-weight: 600; color: var(--teal);
+      letter-spacing: 0.06em; text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .hero-eyebrow .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--teal);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.5; transform: scale(0.8); }
     }
     .hero h1 {
-      font-size: clamp(2.2rem, 5vw, 3.6rem);
-      font-weight: 900; line-height: 1.1;
-      text-align: center; color: var(--text);
-      margin-bottom: 20px;
+      font-size: clamp(2.4rem, 5.5vw, 4rem);
+      font-weight: 900; line-height: 1.08;
+      letter-spacing: -0.03em; color: var(--text);
+      margin-bottom: 22px;
     }
-    .hero p {
-      max-width: 620px; margin: 0 auto 40px;
-      text-align: center; font-size: 1.08rem; color: var(--text3);
+    .hero h1 em { font-style: normal; }
+    .hero-sub {
+      max-width: 580px; margin: 0 auto 44px;
+      font-size: 1.08rem; color: var(--text3); line-height: 1.7;
     }
     .hero-cta {
-      display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
-      margin-bottom: 60px;
+      display: flex; justify-content: center; gap: 14px;
+      flex-wrap: wrap; margin-bottom: 72px;
     }
-    .hero-stats {
-      display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;
+    /* Floating KPI cards */
+    .hero-cards {
+      display: flex; justify-content: center; gap: 16px;
+      flex-wrap: wrap;
     }
-    .hero-stat { text-align: center; }
-    .hero-stat .num {
-      font-size: 1.9rem; font-weight: 800; color: var(--teal);
-      display: block;
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border2);
+      border-radius: 16px; padding: 20px 28px;
+      backdrop-filter: blur(12px);
+      text-align: left; min-width: 150px;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
     }
-    .hero-stat .lbl {
-      font-size: 0.78rem; color: var(--text4);
+    .kpi-card:hover {
+      border-color: rgba(0,200,150,0.4);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,200,150,0.1);
+    }
+    .kpi-card .num {
+      font-size: 2rem; font-weight: 900; color: var(--teal);
+      line-height: 1; margin-bottom: 4px;
+    }
+    .kpi-card .lbl {
+      font-size: 0.72rem; font-weight: 600; color: var(--text3);
       text-transform: uppercase; letter-spacing: 0.08em;
     }
 
-    /* ── Section headers ──────────────────────────────────────── */
-    .section { padding: 96px 0; }
-    .section-alt { background: var(--bg2); }
+    /* ─── Trust bar ──────────────────────────────────────────── */
+    .trust-bar {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
+      background: rgba(10,18,32,0.5);
+    }
+    .trust-inner {
+      display: flex; justify-content: center; align-items: center;
+      gap: 40px; flex-wrap: wrap;
+    }
+    .trust-item {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 600; color: var(--text4);
+      letter-spacing: 0.04em;
+    }
+    .trust-item .icon { font-size: 1rem; }
+
+    /* ─── Sections ───────────────────────────────────────────── */
+    .section { padding: 100px 0; position: relative; z-index: 1; }
+    .section-alt {
+      background: linear-gradient(180deg, transparent, rgba(10,18,32,0.6) 20%, rgba(10,18,32,0.6) 80%, transparent);
+    }
     .sec-label {
       font-size: 0.72rem; font-weight: 700; color: var(--teal);
       text-transform: uppercase; letter-spacing: 0.14em;
-      margin-bottom: 12px; text-align: center;
+      text-align: center; margin-bottom: 10px;
     }
     .sec-title {
-      font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 800;
-      color: var(--text); text-align: center; margin-bottom: 14px;
+      font-size: clamp(1.7rem, 3.5vw, 2.5rem); font-weight: 800;
+      letter-spacing: -0.02em; color: var(--text);
+      text-align: center; margin-bottom: 14px; line-height: 1.15;
     }
     .sec-sub {
-      max-width: 560px; margin: 0 auto 56px;
+      max-width: 520px; margin: 0 auto 60px;
       text-align: center; color: var(--text3); font-size: 1rem;
     }
 
-    /* ── Feature cards ────────────────────────────────────────── */
+    /* ─── Feature cards ──────────────────────────────────────── */
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
     }
+    @media (max-width: 860px) { .features-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+
     .feat-card {
-      background: var(--bg3);
+      background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 16px; padding: 28px;
+      border-radius: 18px; padding: 30px;
+      backdrop-filter: blur(8px);
       transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      position: relative; overflow: hidden;
     }
-    .feat-card:hover {
-      border-color: var(--teal);
-      transform: translateY(-3px);
-      box-shadow: 0 12px 40px rgba(0,200,150,0.08);
+    .feat-card::after {
+      content: "";
+      position: absolute; inset: 0; border-radius: 18px;
+      background: linear-gradient(135deg, rgba(0,200,150,0.04) 0%, transparent 60%);
+      opacity: 0; transition: opacity 0.3s;
     }
-    .feat-icon {
-      font-size: 2rem; margin-bottom: 14px;
+    .feat-card:hover { border-color: rgba(0,200,150,0.3); transform: translateY(-4px); box-shadow: var(--glow); }
+    .feat-card:hover::after { opacity: 1; }
+
+    .feat-icon-wrap {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; margin-bottom: 16px;
+      background: rgba(0,200,150,0.08);
+      border: 1px solid rgba(0,200,150,0.15);
     }
     .feat-card h3 {
-      font-size: 1.05rem; font-weight: 700; color: var(--text);
-      margin-bottom: 8px;
-    }
-    .feat-card p { font-size: 0.88rem; color: var(--text3); line-height: 1.6; }
-    .feat-tag {
-      display: inline-block; margin-top: 14px;
-      font-size: 0.7rem; font-weight: 700; color: var(--teal);
-      background: rgba(0,200,150,0.1); border-radius: 4px;
-      padding: 3px 8px; letter-spacing: 0.05em; text-transform: uppercase;
-    }
-
-    /* ── Pipeline / How it works ──────────────────────────────── */
-    .pipeline {
-      display: flex; flex-direction: column; gap: 0;
-      max-width: 780px; margin: 0 auto;
-    }
-    .pipe-step {
-      display: flex; gap: 24px; align-items: flex-start;
-      position: relative; padding-bottom: 36px;
-    }
-    .pipe-step:last-child { padding-bottom: 0; }
-    .pipe-step::before {
-      content: "";
-      position: absolute; left: 19px; top: 40px;
-      width: 2px; height: calc(100% - 40px);
-      background: linear-gradient(to bottom, var(--border2), transparent);
-    }
-    .pipe-step:last-child::before { display: none; }
-    .pipe-num {
-      flex-shrink: 0; width: 40px; height: 40px;
-      border-radius: 50%; background: var(--bg3);
-      border: 2px solid var(--border2);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.82rem; font-weight: 700; color: var(--teal);
-      z-index: 1;
-    }
-    .pipe-content h4 {
       font-size: 1rem; font-weight: 700; color: var(--text);
-      margin-bottom: 4px;
+      margin-bottom: 8px; letter-spacing: -0.01em;
     }
-    .pipe-content p { font-size: 0.87rem; color: var(--text3); }
+    .feat-card p { font-size: 0.855rem; color: var(--text3); line-height: 1.65; }
+    .new-tag {
+      position: absolute; top: 20px; right: 20px;
+      background: rgba(0,200,150,0.12); border: 1px solid rgba(0,200,150,0.3);
+      color: var(--teal); font-size: 0.65rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 4px;
+    }
 
-    /* ── Agents showcase ──────────────────────────────────────── */
+    /* ─── Agents showcase ────────────────────────────────────── */
     .agents-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 20px;
     }
+    @media (max-width: 720px) { .agents-grid { grid-template-columns: 1fr; } }
+
     .agent-card {
-      border-radius: 14px; padding: 24px;
-      border: 1px solid;
+      border-radius: 18px; padding: 28px; position: relative;
+      backdrop-filter: blur(8px); overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    .agent-irs   { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04); }
-    .agent-gaap  { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.04); }
-    .agent-unicap{ border-color: rgba(124,58,237,0.35); background: rgba(124,58,237,0.04); }
-    .agent-card .label {
+    .agent-card:hover { transform: translateY(-4px); }
+    .agent-irs    { background: rgba(239,68,68,0.06);   border: 1px solid rgba(239,68,68,0.2); }
+    .agent-gaap   { background: rgba(245,158,11,0.06);  border: 1px solid rgba(245,158,11,0.2); }
+    .agent-unicap { background: rgba(124,58,237,0.06);  border: 1px solid rgba(124,58,237,0.2); }
+    .agent-irs:hover    { box-shadow: 0 12px 40px rgba(239,68,68,0.12); }
+    .agent-gaap:hover   { box-shadow: 0 12px 40px rgba(245,158,11,0.12); }
+    .agent-unicap:hover { box-shadow: 0 12px 40px rgba(124,58,237,0.12); }
+
+    .agent-num {
+      position: absolute; top: 20px; right: 20px;
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 800;
+    }
+    .agent-irs    .agent-num { background: rgba(239,68,68,0.15);   color: #EF4444; }
+    .agent-gaap   .agent-num { background: rgba(245,158,11,0.15);  color: #F59E0B; }
+    .agent-unicap .agent-num { background: rgba(124,58,237,0.15);  color: #7C3AED; }
+
+    .agent-rule {
       font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.1em; margin-bottom: 10px;
     }
-    .agent-irs    .label { color: #EF4444; }
-    .agent-gaap   .label { color: #F59E0B; }
-    .agent-unicap .label { color: #7C3AED; }
-    .agent-card h4 {
-      font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 6px;
-    }
-    .agent-card p { font-size: 0.83rem; color: var(--text3); }
-    .conf-bar { margin-top: 14px; }
-    .conf-bar .conf-label {
-      font-size: 0.72rem; color: var(--text4); margin-bottom: 4px;
-      display: flex; justify-content: space-between;
-    }
-    .conf-track {
-      height: 4px; background: var(--border); border-radius: 4px; overflow: hidden;
-    }
-    .conf-fill { height: 100%; border-radius: 4px; }
-    .fill-red    { background: #EF4444; width: 82%; }
-    .fill-amber  { background: #F59E0B; width: 91%; }
-    .fill-purple { background: #7C3AED; width: 74%; }
+    .agent-irs    .agent-rule { color: #EF4444; }
+    .agent-gaap   .agent-rule { color: #F59E0B; }
+    .agent-unicap .agent-rule { color: #7C3AED; }
 
-    /* ── Pricing ──────────────────────────────────────────────── */
-    .pricing-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 24px; max-width: 800px; margin: 0 auto;
+    .agent-card h4 {
+      font-size: 1.05rem; font-weight: 700; color: var(--text);
+      margin-bottom: 8px; letter-spacing: -0.01em;
     }
-    .price-card {
-      background: var(--bg3); border: 1px solid var(--border);
-      border-radius: 20px; padding: 36px 32px;
+    .agent-card p { font-size: 0.84rem; color: var(--text3); line-height: 1.65; }
+
+    .conf-wrap { margin-top: 20px; }
+    .conf-label-row {
+      display: flex; justify-content: space-between;
+      font-size: 0.72rem; margin-bottom: 6px;
+    }
+    .conf-label-row span:first-child { color: var(--text4); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+    .conf-label-row span:last-child { font-weight: 700; }
+    .agent-irs    .conf-label-row span:last-child { color: #EF4444; }
+    .agent-gaap   .conf-label-row span:last-child { color: #F59E0B; }
+    .agent-unicap .conf-label-row span:last-child { color: #7C3AED; }
+    .conf-track {
+      height: 5px; background: rgba(255,255,255,0.06);
+      border-radius: 999px; overflow: hidden;
+    }
+    .conf-fill {
+      height: 100%; border-radius: 999px;
+      transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+    }
+    .fill-red    { background: linear-gradient(90deg,#EF4444,#FF7676); width: 0%; }
+    .fill-amber  { background: linear-gradient(90deg,#F59E0B,#FCD34D); width: 0%; }
+    .fill-purple { background: linear-gradient(90deg,#7C3AED,#A78BFA); width: 0%; }
+    .fill-red.animated    { width: 82%; }
+    .fill-amber.animated  { width: 91%; }
+    .fill-purple.animated { width: 74%; }
+
+    /* Verdict badges */
+    .verdict-grid {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+      margin-top: 48px;
+    }
+    .verdict-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 10px; padding: 10px 18px;
+      font-size: 0.82rem; font-weight: 600; color: var(--text2);
+      backdrop-filter: blur(8px);
       transition: border-color 0.2s, transform 0.2s;
-      position: relative; overflow: hidden;
     }
-    .price-card.featured {
-      border-color: var(--teal);
-      box-shadow: 0 0 0 1px var(--teal), 0 20px 60px rgba(0,200,150,0.12);
+    .verdict-badge:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+
+    /* ─── Pipeline ───────────────────────────────────────────── */
+    .pipeline-grid {
+      display: grid; grid-template-columns: repeat(2,1fr); gap: 12px;
+      max-width: 900px; margin: 0 auto;
     }
-    .price-card.featured::before {
-      content: "Most Popular";
-      position: absolute; top: 16px; right: -28px;
-      background: var(--grad); color: #fff;
-      font-size: 0.68rem; font-weight: 700; padding: 4px 36px;
-      transform: rotate(45deg); letter-spacing: 0.06em;
+    @media (max-width: 640px) { .pipeline-grid { grid-template-columns: 1fr; } }
+    .pipe-card {
+      display: flex; align-items: flex-start; gap: 16px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px 22px;
+      transition: border-color 0.2s, transform 0.15s;
     }
-    .price-card:hover { transform: translateY(-3px); }
-    .price-label {
-      font-size: 0.72rem; font-weight: 700; color: var(--text4);
-      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+    .pipe-card:hover { border-color: rgba(0,200,150,0.25); transform: translateY(-2px); }
+    .pipe-num-badge {
+      flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px;
+      background: rgba(0,200,150,0.1); border: 1px solid rgba(0,200,150,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; font-weight: 800; color: var(--teal);
     }
-    .price-amount {
-      font-size: 2.8rem; font-weight: 900; color: var(--text); line-height: 1;
+    .pipe-card h4 {
+      font-size: 0.9rem; font-weight: 700; color: var(--text);
       margin-bottom: 4px;
     }
-    .price-amount sup { font-size: 1.2rem; vertical-align: top; margin-top: 8px; }
-    .price-period { font-size: 0.82rem; color: var(--text4); margin-bottom: 24px; }
-    .price-divider {
-      height: 1px; background: var(--border); margin-bottom: 20px;
+    .pipe-card p { font-size: 0.8rem; color: var(--text3); line-height: 1.55; }
+
+    /* ─── PDF preview mockup ─────────────────────────────────── */
+    .pdf-mockup {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 20px; padding: 28px; max-width: 560px;
+      margin: 0 auto 60px; backdrop-filter: blur(12px);
     }
-    .price-features { list-style: none; margin-bottom: 28px; }
-    .price-features li {
+    .pdf-header {
+      background: linear-gradient(135deg, rgba(0,200,150,0.15), rgba(0,112,243,0.10));
+      border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;
+      border: 1px solid rgba(0,200,150,0.2);
+    }
+    .pdf-header .pdf-title { font-size: 0.9rem; font-weight: 800; color: var(--text); }
+    .pdf-header .pdf-sub   { font-size: 0.72rem; color: var(--text3); }
+    .pdf-sections { display: flex; flex-direction: column; gap: 8px; }
+    .pdf-section-row {
       display: flex; align-items: center; gap: 10px;
-      font-size: 0.88rem; color: var(--text3); padding: 6px 0;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 0.82rem;
     }
-    .price-features li::before {
-      content: "✓"; color: var(--teal); font-weight: 700; flex-shrink: 0;
+    .pdf-section-row .num {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: rgba(0,200,150,0.12); color: var(--teal);
+      font-size: 0.68rem; font-weight: 800;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
+    .pdf-section-row .name { color: var(--text2); font-weight: 600; flex: 1; }
+    .pdf-section-row .check { color: var(--teal); font-size: 0.8rem; }
 
-    /* ── Trust strip ──────────────────────────────────────────── */
-    .trust-strip {
-      display: flex; flex-wrap: wrap; justify-content: center;
-      gap: 12px; margin-top: 56px;
+    /* ─── Pricing ────────────────────────────────────────────── */
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(2,1fr);
+      gap: 22px; max-width: 780px; margin: 0 auto;
     }
-    .trust-badge {
-      display: flex; align-items: center; gap: 8px;
-      background: var(--bg3); border: 1px solid var(--border);
-      border-radius: 10px; padding: 10px 18px;
-      font-size: 0.82rem; color: var(--text3); font-weight: 500;
-    }
-    .trust-badge .ico { font-size: 1.1rem; }
+    @media (max-width: 640px) { .pricing-grid { grid-template-columns: 1fr; } }
 
-    /* ── CTA section ──────────────────────────────────────────── */
-    .cta-section {
-      padding: 96px 0; text-align: center;
+    .price-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 22px; padding: 36px 32px;
+      backdrop-filter: blur(12px);
+      transition: transform 0.2s, box-shadow 0.2s;
       position: relative; overflow: hidden;
     }
-    .cta-section::before {
-      content: "";
+    .price-card:hover { transform: translateY(-4px); }
+    .price-card.featured {
+      border-color: rgba(0,200,150,0.4);
+      box-shadow: 0 0 60px rgba(0,200,150,0.10), 0 0 0 1px rgba(0,200,150,0.15);
+    }
+    .price-card.featured::before {
+      content: "MOST POPULAR";
+      position: absolute; top: 20px; right: -32px;
+      background: var(--grad); color: #fff;
+      font-size: 0.6rem; font-weight: 800; padding: 5px 44px;
+      transform: rotate(45deg); letter-spacing: 0.1em;
+    }
+    .price-eyebrow {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--text4); margin-bottom: 12px;
+    }
+    .price-amount {
+      font-size: 3rem; font-weight: 900; color: var(--text);
+      letter-spacing: -0.03em; line-height: 1; margin-bottom: 4px;
+      display: flex; align-items: flex-start; gap: 2px;
+    }
+    .price-amount sup { font-size: 1.3rem; margin-top: 8px; }
+    .price-period { font-size: 0.82rem; color: var(--text4); margin-bottom: 28px; }
+    .price-divider { height: 1px; background: var(--border); margin-bottom: 24px; }
+    .price-features { list-style: none; margin-bottom: 32px; }
+    .price-features li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.875rem; color: var(--text3); padding: 7px 0;
+    }
+    .price-features li .chk {
+      width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0;
+      background: rgba(0,200,150,0.12); border: 1px solid rgba(0,200,150,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; color: var(--teal);
+    }
+
+    /* ─── CTA section ────────────────────────────────────────── */
+    .cta-section {
+      padding: 110px 0; text-align: center;
+      position: relative; z-index: 1; overflow: hidden;
+    }
+    .cta-orb {
       position: absolute; inset: 0;
-      background: radial-gradient(ellipse at center, rgba(0,200,150,0.06) 0%, transparent 70%);
+      background: radial-gradient(ellipse at 50% 60%,
+        rgba(0,200,150,0.08) 0%,
+        rgba(0,112,243,0.05) 40%,
+        transparent 70%);
       pointer-events: none;
     }
     .cta-section h2 {
-      font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 900;
-      color: var(--text); margin-bottom: 16px;
+      font-size: clamp(1.9rem, 4vw, 3rem); font-weight: 900;
+      letter-spacing: -0.03em; color: var(--text); margin-bottom: 16px;
     }
     .cta-section p {
-      font-size: 1rem; color: var(--text3); max-width: 500px;
-      margin: 0 auto 36px;
+      font-size: 1.05rem; color: var(--text3);
+      max-width: 480px; margin: 0 auto 40px;
     }
     .cta-btns { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
 
-    /* ── Footer ───────────────────────────────────────────────── */
+    /* ─── Footer ─────────────────────────────────────────────── */
     footer {
-      border-top: 1px solid var(--border);
-      padding: 36px 0;
+      border-top: 1px solid var(--border); padding: 32px 0;
+      position: relative; z-index: 1;
     }
     .footer-inner {
       display: flex; justify-content: space-between; align-items: center;
-      flex-wrap: wrap; gap: 16px;
+      flex-wrap: wrap; gap: 14px;
     }
-    .footer-logo { font-size: 0.95rem; font-weight: 800; }
-    .footer-links {
-      display: flex; gap: 24px; list-style: none;
-    }
-    .footer-links a {
-      font-size: 0.82rem; color: var(--text4);
-      transition: color 0.15s;
-    }
+    .footer-logo { font-size: 0.9rem; font-weight: 800; }
+    .footer-links { display: flex; gap: 28px; list-style: none; }
+    .footer-links a { font-size: 0.8rem; color: var(--text4); transition: color 0.15s; }
     .footer-links a:hover { color: var(--teal); }
-    .footer-copy { font-size: 0.78rem; color: var(--text4); }
+    .footer-copy { font-size: 0.76rem; color: var(--text4); }
 
-    /* ── Scrollbar ────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; }
+    /* ─── Scroll animations ──────────────────────────────────── */
+    .reveal {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-d1 { transition-delay: 0.1s; }
+    .reveal-d2 { transition-delay: 0.2s; }
+    .reveal-d3 { transition-delay: 0.3s; }
+    .reveal-d4 { transition-delay: 0.4s; }
+
+    /* ─── Scrollbar ──────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
 
-    /* ── Responsive ───────────────────────────────────────────── */
     @media (max-width: 680px) {
       .nav-links { display: none; }
-      .hero-stats { gap: 28px; }
+      .hero { padding: 120px 0 80px; }
       .footer-inner { flex-direction: column; align-items: flex-start; }
     }
-
-    /* ── Animations ───────────────────────────────────────────── */
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(24px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .fade-up { animation: fadeUp 0.6s ease both; }
-    .fade-up-d1 { animation-delay: 0.1s; }
-    .fade-up-d2 { animation-delay: 0.2s; }
-    .fade-up-d3 { animation-delay: 0.3s; }
   </style>
 </head>
 <body>
 
-<!-- ── Navigation ─────────────────────────────────────────────── -->
+<!-- ── Nav ───────────────────────────────────────────────────── -->
 <nav>
   <div class="container nav-inner">
-    <a href="#" class="nav-logo grad-text">📊 AI Bookkeeping Specialist</a>
+    <a href="#" class="nav-logo">
+      <span style="font-size:1.2rem">📊</span>
+      <span class="grad-text">AI Bookkeeping Specialist</span>
+    </a>
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
-      <li><a href="#agents">Agentic Debate</a></li>
-      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#agents">Agents</a></li>
+      <li><a href="#reports">Reports</a></li>
       <li><a href="#pricing">Pricing</a></li>
     </ul>
     <a href="http://localhost:8501" class="btn btn-primary">Launch App →</a>
   </div>
 </nav>
 
-<!-- ── Hero ───────────────────────────────────────────────────── -->
+<!-- ── Hero ──────────────────────────────────────────────────── -->
 <section class="hero">
+  <div class="hero-orb"></div>
   <div class="container">
-    <div class="hero-eyebrow fade-up">
-      <span class="badge"><span>✦</span> 2026 IRS &amp; GAAP Compliant &nbsp;·&nbsp; 100% Local</span>
+    <div class="reveal">
+      <div class="hero-eyebrow">
+        <span class="dot"></span>
+        2026 IRS &amp; GAAP Compliant &nbsp;·&nbsp; 100% Local &nbsp;·&nbsp; AI-Powered
+      </div>
     </div>
-    <h1 class="fade-up fade-up-d1">
-      AI-Powered Bookkeeping<br />
-      <span class="grad-text">Built for Audit-Ready Compliance</span>
+    <h1 class="reveal reveal-d1">
+      Bookkeeping That Thinks.<br />
+      <em class="grad-text">Compliance That Doesn't Blink.</em>
     </h1>
-    <p class="fade-up fade-up-d2">
-      Multi-agent GAAP · IRS · UNICAP reconciliation, full PDF financial reports,
-      email delivery, and Stripe payments — all running locally on your machine.
+    <p class="hero-sub reveal reveal-d2">
+      Three AI agents cross-examine every transaction under IRS §274, GAAP ASC 360, and UNICAP §263A —
+      then deliver audit-ready PDF reports, straight to your client's inbox.
     </p>
-    <div class="hero-cta fade-up fade-up-d3">
-      <a href="http://localhost:8501" class="btn btn-primary">🚀 Open App</a>
-      <a href="#features" class="btn btn-outline">Explore Features</a>
+    <div class="hero-cta reveal reveal-d3">
+      <a href="http://localhost:8501" class="btn btn-primary btn-lg">🚀 Open the App</a>
+      <a href="#features" class="btn btn-ghost btn-lg">Explore Features</a>
     </div>
-    <div class="hero-stats fade-up fade-up-d3">
-      <div class="hero-stat">
-        <span class="num">11+</span>
-        <span class="lbl">Pipeline Phases</span>
-      </div>
-      <div class="hero-stat">
-        <span class="num">3</span>
-        <span class="lbl">AI Compliance Agents</span>
-      </div>
-      <div class="hero-stat">
-        <span class="num">7</span>
-        <span class="lbl">PDF Report Sections</span>
-      </div>
-      <div class="hero-stat">
-        <span class="num">100%</span>
-        <span class="lbl">Local &amp; Private</span>
-      </div>
+    <div class="hero-cards reveal reveal-d4">
+      <div class="kpi-card"><div class="num">11+</div><div class="lbl">Pipeline Phases</div></div>
+      <div class="kpi-card"><div class="num">3</div><div class="lbl">AI Agents</div></div>
+      <div class="kpi-card"><div class="num">7</div><div class="lbl">PDF Sections</div></div>
+      <div class="kpi-card"><div class="num">$75</div><div class="lbl">IRS Safe Harbor</div></div>
+      <div class="kpi-card"><div class="num">100%</div><div class="lbl">Local &amp; Private</div></div>
     </div>
   </div>
 </section>
+
+<!-- ── Trust bar ─────────────────────────────────────────────── -->
+<div class="trust-bar">
+  <div class="container">
+    <div class="trust-inner">
+      <div class="trust-item"><span class="icon">🔒</span> SHA-256 Ledger Integrity</div>
+      <div class="trust-item"><span class="icon">🛡️</span> IRC §274 Compliant</div>
+      <div class="trust-item"><span class="icon">📘</span> GAAP ASC 360 &amp; 606</div>
+      <div class="trust-item"><span class="icon">🤖</span> Llama 3.2 — Runs Locally</div>
+      <div class="trust-item"><span class="icon">💳</span> Stripe Payments</div>
+      <div class="trust-item"><span class="icon">📧</span> SMTP Email Delivery</div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Features ───────────────────────────────────────────────── -->
-<section class="section section-alt" id="features">
+<section class="section" id="features">
   <div class="container">
-    <p class="sec-label">Everything You Need</p>
-    <h2 class="sec-title">Professional Bookkeeping, Automated</h2>
-    <p class="sec-sub">From ingestion to audit — every phase of your financial workflow in one place.</p>
+    <p class="sec-label reveal">Everything You Need</p>
+    <h2 class="sec-title reveal reveal-d1">Professional Bookkeeping,<br/>Fully Automated</h2>
+    <p class="sec-sub reveal reveal-d2">From raw ledger to audit-ready report — every phase of your financial workflow in one place.</p>
     <div class="features-grid">
 
-      <div class="feat-card">
-        <div class="feat-icon">🤖</div>
+      <div class="feat-card reveal">
+        <span class="new-tag">New</span>
+        <div class="feat-icon-wrap">🤖</div>
         <h3>Enhanced Agentic Debate</h3>
-        <p>Three independent AI agents — IRS §274, GAAP ASC 360, and UNICAP §263A — cross-examine every transaction and deliver a confidence-scored verdict.</p>
-        <span class="feat-tag">New</span>
+        <p>Three independent agents — IRS §274, GAAP ASC 360, UNICAP §263A — cross-examine every transaction and deliver confidence-scored, risk-tiered verdicts.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">📄</div>
+      <div class="feat-card reveal reveal-d1">
+        <span class="new-tag">New</span>
+        <div class="feat-icon-wrap">📄</div>
         <h3>Full PDF Financial Reports</h3>
-        <p>7-section audit-ready PDFs: cover page, executive summary, income statement, balance sheet, cash flows, debate summary, and IRS compliance detail.</p>
-        <span class="feat-tag">New</span>
+        <p>7-section audit-ready PDFs with colored headers, page numbers, income statement, balance sheet, cash flows, debate summary, and IRS compliance detail.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">📧</div>
+      <div class="feat-card reveal reveal-d2">
+        <span class="new-tag">New</span>
+        <div class="feat-icon-wrap">📧</div>
         <h3>Email Delivery</h3>
-        <p>Send PDF reports and HTML invoice summaries directly to client emails via any SMTP provider. Credentials stay local — never in the cloud.</p>
-        <span class="feat-tag">New</span>
+        <p>Send PDF reports and HTML invoice summaries to client email via any SMTP provider. Credentials stored locally — never in the cloud.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">💳</div>
+      <div class="feat-card reveal reveal-d3">
+        <span class="new-tag">New</span>
+        <div class="feat-icon-wrap">💳</div>
         <h3>Stripe Payments</h3>
-        <p>Accept setup fees and monthly subscriptions via Stripe Checkout. Payment sessions are verified via API and automatically activate licenses.</p>
-        <span class="feat-tag">New</span>
+        <p>Accept setup fees and monthly renewals via Stripe Checkout. Sessions verified via API — licenses auto-activate on payment confirmation.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">🏷️</div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">🏷️</div>
         <h3>AI Categorization</h3>
-        <p>Ollama-powered automatic GAAP categorization of every transaction. Runs locally with Llama 3.2 — no data leaves your machine.</p>
-        <span class="feat-tag">Local AI</span>
+        <p>Ollama-powered GAAP categorization of every transaction using Llama 3.2. Zero cloud dependency — all inference runs on your machine.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">📈</div>
+      <div class="feat-card reveal reveal-d1">
+        <div class="feat-icon-wrap">📈</div>
         <h3>CFO Dashboard</h3>
-        <p>Real-time KPIs, burn rate trend, spend-by-category donut, revenue vs. expenses waterfall, and top expense tables with Plotly charts.</p>
-        <span class="feat-tag">Visualizations</span>
+        <p>KPI cards, burn rate trends, spend-by-category donuts, and revenue vs. expenses waterfall charts with interactive Plotly visuals.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">📑</div>
+      <div class="feat-card reveal reveal-d2">
+        <div class="feat-icon-wrap">📑</div>
         <h3>Core Financial Statements</h3>
-        <p>GAAP-compliant income statement, balance sheet (auto-balanced A = L + E check), cash flow (indirect method), and statement of equity.</p>
-        <span class="feat-tag">GAAP</span>
+        <p>GAAP-compliant income statement, balance sheet with auto A = L + E check, cash flow indirect method, and statement of equity.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">💬</div>
+      <div class="feat-card reveal reveal-d3">
+        <div class="feat-icon-wrap">💬</div>
         <h3>AI Tax Auditor Chat</h3>
-        <p>Zero-knowledge auditor chatbot with full ledger context injected into the prompt. Answers are strictly grounded in your client's data.</p>
-        <span class="feat-tag">Local AI</span>
+        <p>Zero-knowledge chatbot with ledger context injected into every prompt. Answers are strictly grounded in your client's actual data.</p>
       </div>
 
-      <div class="feat-card">
-        <div class="feat-icon">🏢</div>
+      <div class="feat-card reveal">
+        <div class="feat-icon-wrap">🏢</div>
         <h3>Multi-Client Vault</h3>
-        <p>UUID-isolated per-client SQLite databases. Create unlimited client profiles, each with their own ledger, license, and revenue history.</p>
-        <span class="feat-tag">Multi-Tenant</span>
+        <p>UUID-isolated SQLite databases per client. Unlimited profiles, each with their own ledger, license, revenue history, and settings.</p>
       </div>
 
     </div>
   </div>
 </section>
 
-<!-- ── Agentic Debate ──────────────────────────────────────────── -->
-<section class="section" id="agents">
+<!-- ── Agents ─────────────────────────────────────────────────── -->
+<section class="section section-alt" id="agents">
   <div class="container">
-    <p class="sec-label">Three-Agent Framework</p>
-    <h2 class="sec-title">Every Transaction, Cross-Examined</h2>
-    <p class="sec-sub">Three specialized compliance agents debate each transaction and deliver a confidence-scored, risk-tiered verdict.</p>
+    <p class="sec-label reveal">Three-Agent Framework</p>
+    <h2 class="sec-title reveal reveal-d1">Every Transaction, Cross-Examined</h2>
+    <p class="sec-sub reveal reveal-d2">Specialized agents debate each line item and produce a confidence-scored, risk-tiered verdict in real time.</p>
+
     <div class="agents-grid">
-      <div class="agent-card agent-irs">
-        <div class="label">Agent 1 — IRS</div>
+      <div class="agent-card agent-irs reveal">
+        <div class="agent-num">01</div>
+        <div class="agent-rule">IRS §274 — Agent 1</div>
         <h4>IRS §274 Agent</h4>
-        <p>Applies IRC §274(d) — the $75 substantiation rule. Flags any expense over $75 for receipt and written business purpose. Calculates disallowance risk at audit.</p>
-        <div class="conf-bar">
-          <div class="conf-label"><span>Confidence Score</span><span>82%</span></div>
+        <p>Applies IRC §274(d) — the $75 substantiation rule. Flags expenses over $75 for receipt and written business purpose. Calculates full disallowance risk at audit.</p>
+        <div class="conf-wrap">
+          <div class="conf-label-row">
+            <span>Confidence Score</span>
+            <span>82%</span>
+          </div>
           <div class="conf-track"><div class="conf-fill fill-red"></div></div>
         </div>
       </div>
-      <div class="agent-card agent-gaap">
-        <div class="label">Agent 2 — GAAP</div>
+
+      <div class="agent-card agent-gaap reveal reveal-d1">
+        <div class="agent-num">02</div>
+        <div class="agent-rule">GAAP ASC 360 — Agent 2</div>
         <h4>GAAP ASC 360 Agent</h4>
-        <p>Applies ASC 360 capitalization rules. Reviews expenses over $2,000 to determine whether useful life exceeds one year, triggering asset capitalization.</p>
-        <div class="conf-bar">
-          <div class="conf-label"><span>Confidence Score</span><span>91%</span></div>
+        <p>Applies ASC 360 capitalization rules. Reviews expenses over $2,000 for useful life determination. Flags P&amp;L misstatement risk from incorrect expense treatment.</p>
+        <div class="conf-wrap">
+          <div class="conf-label-row">
+            <span>Confidence Score</span>
+            <span>91%</span>
+          </div>
           <div class="conf-track"><div class="conf-fill fill-amber"></div></div>
         </div>
       </div>
-      <div class="agent-card agent-unicap">
-        <div class="label">Agent 3 — UNICAP</div>
+
+      <div class="agent-card agent-unicap reveal reveal-d2">
+        <div class="agent-num">03</div>
+        <div class="agent-rule">UNICAP §263A — Agent 3</div>
         <h4>UNICAP §263A Agent</h4>
-        <p>Applies IRC §263A uniform capitalization rules to production-related expenses. Detects inventory, manufacturing, and COGS categories requiring cost allocation review.</p>
-        <div class="conf-bar">
-          <div class="conf-label"><span>Confidence Score</span><span>74%</span></div>
+        <p>Applies IRC §263A uniform capitalization rules to production-related expenses. Detects inventory, COGS, and manufacturing categories requiring cost allocation review.</p>
+        <div class="conf-wrap">
+          <div class="conf-label-row">
+            <span>Confidence Score</span>
+            <span>74%</span>
+          </div>
           <div class="conf-track"><div class="conf-fill fill-purple"></div></div>
         </div>
       </div>
     </div>
-    <div class="trust-strip">
-      <div class="trust-badge"><span class="ico">✅</span> CLEAN — All agents cleared</div>
-      <div class="trust-badge"><span class="ico">🟡</span> LOW RISK — 1 agent flagged</div>
-      <div class="trust-badge"><span class="ico">🟠</span> MEDIUM RISK — 2 agents flagged</div>
-      <div class="trust-badge"><span class="ico">🔴</span> HIGH RISK — All 3 agents flagged</div>
+
+    <div class="verdict-grid reveal">
+      <div class="verdict-badge">✅ CLEAN — All agents cleared</div>
+      <div class="verdict-badge">🟡 LOW RISK — 1 agent flagged</div>
+      <div class="verdict-badge">🟠 MEDIUM RISK — 2 agents flagged</div>
+      <div class="verdict-badge">🔴 HIGH RISK — All 3 flagged</div>
     </div>
   </div>
 </section>
 
-<!-- ── Pipeline ────────────────────────────────────────────────── -->
-<section class="section section-alt" id="pipeline">
+<!-- ── PDF Reports ────────────────────────────────────────────── -->
+<section class="section" id="reports">
   <div class="container">
-    <p class="sec-label">11-Phase Pipeline</p>
-    <h2 class="sec-title">From Raw Data to Audit-Ready Report</h2>
-    <p class="sec-sub">Every phase flows into the next — ingest once, get full compliance coverage automatically.</p>
-    <div class="pipeline">
-      <div class="pipe-step">
-        <div class="pipe-num">1</div>
-        <div class="pipe-content">
-          <h4>🏢 Client Vault Setup</h4>
-          <p>Create UUID-isolated client profiles. Migrate legacy data or start fresh with a new ledger.</p>
-        </div>
+    <p class="sec-label reveal">Audit-Ready Export</p>
+    <h2 class="sec-title reveal reveal-d1">7-Section PDF Financial Reports</h2>
+    <p class="sec-sub reveal reveal-d2">One click generates a complete, professionally formatted PDF — ready for auditors, partners, or clients.</p>
+
+    <div class="pdf-mockup reveal reveal-d1">
+      <div class="pdf-header">
+        <div class="pdf-title">📊 AI Bookkeeping Specialist — Full Financial Report</div>
+        <div class="pdf-sub">2026 IRS &amp; GAAP Compliant &nbsp;·&nbsp; Client-Reported Figures &nbsp;·&nbsp; Confidential</div>
       </div>
-      <div class="pipe-step">
-        <div class="pipe-num">2</div>
-        <div class="pipe-content">
-          <h4>📥 Ledger Ingestion</h4>
-          <p>Upload Excel or CSV ledgers. Data is parsed and stored in the client's private SQLite vault.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">3</div>
-        <div class="pipe-content">
-          <h4>💰 Revenue Entry</h4>
-          <p>Add revenue line items manually or import from CSV. Drives net income across all statements.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">4</div>
-        <div class="pipe-content">
-          <h4>🏷️ AI Categorization</h4>
-          <p>Ollama + Llama 3.2 auto-categorizes every transaction into GAAP categories locally.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">5</div>
-        <div class="pipe-content">
-          <h4>🤖 Agentic Debate</h4>
-          <p>Three agents cross-examine each transaction and produce confidence-scored verdicts with risk tiers.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">6</div>
-        <div class="pipe-content">
-          <h4>📑 Financial Statements</h4>
-          <p>Auto-generated income statement, balance sheet (balanced check), cash flows, and equity statement.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">7</div>
-        <div class="pipe-content">
-          <h4>📈 CFO Dashboard</h4>
-          <p>KPI cards, burn rate trend, spend breakdown, and waterfall charts for executive review.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">8</div>
-        <div class="pipe-content">
-          <h4>📄 PDF Export</h4>
-          <p>7-section audit-ready PDF with colored headers, page numbers, and full financial statements.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">9</div>
-        <div class="pipe-content">
-          <h4>📧 Email Delivery</h4>
-          <p>Send PDF reports and HTML invoices directly to client email via any SMTP provider.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">10</div>
-        <div class="pipe-content">
-          <h4>💬 AI Tax Auditor</h4>
-          <p>Zero-knowledge chatbot — answers questions strictly grounded in the client's ledger data.</p>
-        </div>
-      </div>
-      <div class="pipe-step">
-        <div class="pipe-num">11</div>
-        <div class="pipe-content">
-          <h4>💳 Licensing &amp; Payments</h4>
-          <p>Stripe Checkout for setup fees and monthly renewals. Licenses auto-activate on payment verification.</p>
-        </div>
+      <div class="pdf-sections">
+        <div class="pdf-section-row"><div class="num">1</div><div class="name">Cover Page — Client, Date &amp; Compliance Badges</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">2</div><div class="name">Executive Summary — 9 Financial KPIs</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">3</div><div class="name">Income Statement — Revenue, Expenses, Net Income</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">4</div><div class="name">Balance Sheet — Assets, Liabilities &amp; Equity Check</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">5</div><div class="name">Cash Flow Statement — Indirect Method</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">6</div><div class="name">Agentic Debate Summary — All 3 Agents</div><div class="check">✓</div></div>
+        <div class="pdf-section-row"><div class="num">7</div><div class="name">IRS Compliance Detail — Flagged Item Breakdown</div><div class="check">✓</div></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Pricing ─────────────────────────────────────────────────── -->
+<!-- ── Pipeline ───────────────────────────────────────────────── -->
+<section class="section section-alt">
+  <div class="container">
+    <p class="sec-label reveal">11-Phase Pipeline</p>
+    <h2 class="sec-title reveal reveal-d1">From Raw Data to Audit-Ready</h2>
+    <p class="sec-sub reveal reveal-d2">Every phase flows into the next — ingest once and get full compliance coverage automatically.</p>
+    <div class="pipeline-grid">
+      <div class="pipe-card reveal">
+        <div class="pipe-num-badge">01</div>
+        <div><h4>🏢 Client Vault Setup</h4><p>UUID-isolated profiles with legacy data migration support.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d1">
+        <div class="pipe-num-badge">02</div>
+        <div><h4>💳 Subscription &amp; Stripe</h4><p>Trial management, Stripe Checkout, and auto license activation.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d2">
+        <div class="pipe-num-badge">03</div>
+        <div><h4>📥 Ledger Ingestion</h4><p>Upload Excel or CSV — stored in the client's private SQLite vault.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d3">
+        <div class="pipe-num-badge">04</div>
+        <div><h4>💰 Revenue Entry</h4><p>Manual entries or CSV import. Drives net income across all statements.</p></div>
+      </div>
+      <div class="pipe-card reveal">
+        <div class="pipe-num-badge">05</div>
+        <div><h4>🏷️ AI Categorization</h4><p>Llama 3.2 auto-categorizes every transaction into GAAP categories, locally.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d1">
+        <div class="pipe-num-badge">06</div>
+        <div><h4>🤖 Agentic Debate</h4><p>Three agents cross-examine transactions with confidence scores and risk tiers.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d2">
+        <div class="pipe-num-badge">07</div>
+        <div><h4>📊 Financial Reporting</h4><p>Risk flags, reconciliation scores, and compliance metrics per transaction.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d3">
+        <div class="pipe-num-badge">08</div>
+        <div><h4>📑 Financial Statements</h4><p>Auto-generated income, balance sheet, cash flow, and equity statements.</p></div>
+      </div>
+      <div class="pipe-card reveal">
+        <div class="pipe-num-badge">09</div>
+        <div><h4>📈 CFO Dashboard</h4><p>KPI cards, burn rate trends, waterfall charts, and spend breakdown visuals.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d1">
+        <div class="pipe-num-badge">10</div>
+        <div><h4>📄 PDF Reports</h4><p>7-section audit-ready PDFs with page numbers and colored section headers.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d2">
+        <div class="pipe-num-badge">11</div>
+        <div><h4>📧 Email Delivery</h4><p>Send PDF reports and HTML invoices via SMTP to any client email address.</p></div>
+      </div>
+      <div class="pipe-card reveal reveal-d3">
+        <div class="pipe-num-badge">+</div>
+        <div><h4>💬 AI Tax Auditor</h4><p>Zero-knowledge chatbot — answers grounded strictly in ledger data.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pricing ────────────────────────────────────────────────── -->
 <section class="section" id="pricing">
   <div class="container">
-    <p class="sec-label">Simple Pricing</p>
-    <h2 class="sec-title">Transparent, No Surprises</h2>
-    <p class="sec-sub">One setup fee to activate full access. A low monthly renewal to keep everything running.</p>
+    <p class="sec-label reveal">Simple Pricing</p>
+    <h2 class="sec-title reveal reveal-d1">Transparent. No Surprises.</h2>
+    <p class="sec-sub reveal reveal-d2">Start free for 14 days. One setup fee to unlock everything. A low monthly renewal to keep it running.</p>
     <div class="pricing-grid">
 
-      <div class="price-card">
-        <div class="price-label">One-Time</div>
+      <div class="price-card reveal">
+        <div class="price-eyebrow">One-Time Setup</div>
         <div class="price-amount"><sup>$</sup>299</div>
-        <div class="price-period">setup fee — pay once</div>
+        <div class="price-period">pay once — 30 days access included</div>
         <div class="price-divider"></div>
         <ul class="price-features">
-          <li>Full vault access</li>
-          <li>Unlimited clients</li>
-          <li>All AI features</li>
-          <li>Agentic Debate engine</li>
-          <li>PDF report export</li>
-          <li>Email delivery</li>
-          <li>30 days initial access</li>
+          <li><div class="chk">✓</div> Full vault access</li>
+          <li><div class="chk">✓</div> Unlimited client profiles</li>
+          <li><div class="chk">✓</div> All AI features</li>
+          <li><div class="chk">✓</div> Agentic Debate engine</li>
+          <li><div class="chk">✓</div> Full PDF report export</li>
+          <li><div class="chk">✓</div> Email delivery</li>
+          <li><div class="chk">✓</div> Stripe payment integration</li>
         </ul>
-        <a href="http://localhost:8501" class="btn btn-outline" style="width:100%;justify-content:center;">
+        <a href="http://localhost:8501" class="btn btn-ghost" style="width:100%;justify-content:center;">
           Get Started
         </a>
       </div>
 
-      <div class="price-card featured">
-        <div class="price-label">Monthly</div>
-        <div class="price-amount"><sup>$</sup>49<span style="font-size:1.4rem">.99</span></div>
+      <div class="price-card featured reveal reveal-d1">
+        <div class="price-eyebrow">Monthly Renewal</div>
+        <div class="price-amount"><sup>$</sup>49<span style="font-size:1.5rem;font-weight:900">.99</span></div>
         <div class="price-period">per month — cancel anytime</div>
         <div class="price-divider"></div>
         <ul class="price-features">
-          <li>Renews access for 30 days</li>
-          <li>All AI features included</li>
-          <li>CFO Dashboard</li>
-          <li>Agentic Debate + UNICAP</li>
-          <li>Full PDF reports</li>
-          <li>Email + Stripe integration</li>
-          <li>AI Tax Auditor chat</li>
+          <li><div class="chk">✓</div> 30-day access renewal</li>
+          <li><div class="chk">✓</div> All AI features included</li>
+          <li><div class="chk">✓</div> CFO Dashboard</li>
+          <li><div class="chk">✓</div> 3-Agent Debate + UNICAP</li>
+          <li><div class="chk">✓</div> 7-section PDF reports</li>
+          <li><div class="chk">✓</div> Email + Stripe integration</li>
+          <li><div class="chk">✓</div> AI Tax Auditor chat</li>
         </ul>
         <a href="http://localhost:8501" class="btn btn-primary" style="width:100%;justify-content:center;">
           Subscribe via Stripe
@@ -689,42 +844,73 @@
 
     </div>
 
-    <div class="trust-strip">
-      <div class="trust-badge"><span class="ico">🔒</span> 100% Local — No Cloud Sync</div>
-      <div class="trust-badge"><span class="ico">🛡️</span> SHA-256 Ledger Integrity</div>
-      <div class="trust-badge"><span class="ico">📋</span> 2026 IRS Compliant</div>
-      <div class="trust-badge"><span class="ico">📘</span> GAAP Standards</div>
-      <div class="trust-badge"><span class="ico">🤖</span> Powered by Llama 3.2</div>
-      <div class="trust-badge"><span class="ico">💳</span> Stripe Payments</div>
+    <div class="verdict-grid reveal" style="margin-top:44px;">
+      <div class="verdict-badge">🔒 No Cloud Sync</div>
+      <div class="verdict-badge">🛡️ SHA-256 Ledger Hash</div>
+      <div class="verdict-badge">📋 2026 IRS Standards</div>
+      <div class="verdict-badge">📘 GAAP Compliant</div>
+      <div class="verdict-badge">🤖 Llama 3.2 Local AI</div>
+      <div class="verdict-badge">14-Day Free Trial</div>
     </div>
   </div>
 </section>
 
-<!-- ── CTA ─────────────────────────────────────────────────────── -->
+<!-- ── CTA ────────────────────────────────────────────────────── -->
 <section class="cta-section">
+  <div class="cta-orb"></div>
   <div class="container">
-    <h2>Ready to Automate Your Compliance?</h2>
-    <p>Start your 14-day free trial. No credit card required until you activate.</p>
-    <div class="cta-btns">
-      <a href="http://localhost:8501" class="btn btn-primary">🚀 Launch AI Bookkeeping Specialist</a>
-      <a href="#features" class="btn btn-outline">Learn More</a>
+    <h2 class="reveal">Ready to Automate<br/><span class="grad-text">Your Compliance?</span></h2>
+    <p class="reveal reveal-d1">Start your 14-day free trial — no credit card required until you activate.</p>
+    <div class="cta-btns reveal reveal-d2">
+      <a href="http://localhost:8501" class="btn btn-primary btn-lg">🚀 Launch AI Bookkeeping Specialist</a>
+      <a href="#features" class="btn btn-ghost btn-lg">See All Features</a>
     </div>
   </div>
 </section>
 
-<!-- ── Footer ──────────────────────────────────────────────────── -->
+<!-- ── Footer ─────────────────────────────────────────────────── -->
 <footer>
   <div class="container footer-inner">
     <span class="footer-logo grad-text">📊 AI Bookkeeping Specialist</span>
     <ul class="footer-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#agents">Agents</a></li>
-      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#reports">Reports</a></li>
       <li><a href="#pricing">Pricing</a></li>
     </ul>
-    <span class="footer-copy">© 2026 AI Bookkeeping Specialist · 2026 IRS &amp; GAAP Compliant · 100% Local</span>
+    <span class="footer-copy">© 2026 AI Bookkeeping Specialist · IRS &amp; GAAP Compliant · 100% Local</span>
   </div>
 </footer>
 
+<script>
+  // Scroll-reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Animate confidence bars when agent section scrolls into view
+  const barObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.querySelectorAll('.conf-fill').forEach(bar => bar.classList.add('animated'));
+        barObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.agents-grid').forEach(el => barObserver.observe(el));
+
+  // Nav shrink on scroll
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => {
+    nav.style.borderBottomColor = window.scrollY > 60
+      ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)';
+  });
+</script>
 </body>
 </html>
