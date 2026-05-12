@@ -5,6 +5,12 @@ import os
 import requests
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
+try:
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
+except ImportError:
+    FPDF_AVAILABLE = False
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
 os.makedirs('clients', exist_ok=True)
@@ -78,6 +84,7 @@ with st.sidebar:
         "📊 Financial Reporting",
         "📑 Financial Statements",
         "📈 CFO Dashboard",
+        "📄 Quick Start Guide",
         "💬 AI CFO Chat"
     ])
 
@@ -101,29 +108,51 @@ if st.session_state.page == "🏢 Client Management":
 elif st.session_state.active_client == "None":
     st.warning("⚠️ Access Restricted: Select a client in 'Client Management' to see data.")
 
-# --- 6. PHASE: AGENTIC DEBATE (FIXED AUDIT BLOCKS) ---
+# --- 6. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
 elif st.session_state.page == "🤖 Agentic Debate":
-    st.title("🤖 Agentic Debate: IRS vs. GAAP Reconciliation")
+    st.title("🤖 Agentic Debate: GAAP vs. IRS Reconciliation")
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
-        for index, row in df.iterrows():
-            with st.expander(f"Audit Review: {row['description']} (${row['amount']})"):
+        flagged_irs  = df[df['amount'] > 75]
+        flagged_gaap = df[df['amount'] > 2000]
+        reconciliation_score = int(100 - (len(flagged_irs) / len(df)) * 100) if len(df) else 100
+
+        s1, s2, s3 = st.columns(3)
+        s1.metric("IRS Flags (IRC §274 >$75)",  len(flagged_irs),
+                  delta=f"-${flagged_irs['amount'].sum():,.2f} at risk", delta_color="inverse")
+        s2.metric("GAAP Flags (ASC 360 >$2K)", len(flagged_gaap))
+        s3.metric("Reconciliation Score", f"{reconciliation_score}%",
+                  delta=f"{reconciliation_score - 100}% vs target")
+
+        st.divider()
+        show_flagged = st.checkbox("Show Flagged Transactions Only", value=False)
+        audit_df = flagged_irs if show_flagged else df
+
+        for _, row in audit_df.iterrows():
+            irs_flag  = row['amount'] > 75
+            gaap_flag = row['amount'] > 2000
+            icon = "🚩" if (irs_flag or gaap_flag) else "✅"
+            with st.expander(f"{icon} {row.get('description', 'N/A')} — ${row['amount']:,.2f}"):
                 irs_col, gaap_col = st.columns(2)
-                # IRS Logic Block
                 with irs_col:
                     st.error("**🛡️ IRS Agent**")
-                    if row['amount'] > 75:
-                        st.write("🚩 **IRC Sec 274:** Detailed substantiation and receipts required.")
+                    if irs_flag:
+                        st.write("🚩 **IRC §274(d):** Substantiation required.")
+                        st.write("📋 **Action:** Obtain receipt + business purpose statement.")
+                        st.write("⚠️ **Risk:** Full disallowance if unsubstantiated at audit.")
                     else:
-                        st.write("✅ Compliant under standard safe harbor thresholds.")
-                # GAAP Logic Block
+                        st.write("✅ **Safe Harbor:** Under $75 threshold.")
+                        st.write("📋 **No action required.** Standard deduction applies.")
                 with gaap_col:
                     st.info("**📘 GAAP Agent**")
-                    if row['amount'] > 2000:
-                        st.write("🚩 **ASC 360:** Review for long-term Asset Capitalization.")
+                    if gaap_flag:
+                        st.write("🚩 **ASC 360:** Capitalize if useful life > 1 year.")
+                        st.write("📋 **Action:** Asset vs. expense determination required.")
+                        st.write("⚠️ **Risk:** P&L misstatement if incorrectly expensed.")
                     else:
-                        st.write("✅ Standard accrual treatment verified.")
+                        st.write("✅ **Expense Treatment:** Standard accrual applies.")
+                        st.write("📋 **No capitalization required.** Book as period cost.")
 
 # --- 7. PHASE: FINANCIAL REPORTING (RECONCILIATION & RISK) ---
 elif st.session_state.page == "📊 Financial Reporting":
@@ -276,7 +305,125 @@ elif st.session_state.page == "📈 CFO Dashboard":
               else df.nlargest(10, 'amount')[['date', 'description', 'amount']]
         st.dataframe(top.style.format({'amount': '${:,.2f}'}), use_container_width=True)
 
-# --- 10. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
+# --- 10. PHASE: QUICK START GUIDE (FPDF2 REPORT) ---
+elif st.session_state.page == "📄 Quick Start Guide":
+    st.title("📄 Quick Start Guide — PDF Financial Report")
+
+    if not FPDF_AVAILABLE:
+        st.error("fpdf2 is not installed. Run: `pip install fpdf2`")
+    elif df.empty:
+        st.info("Ingest client data first to generate the PDF report.")
+    else:
+        client = st.session_state.active_client
+        rev    = 35000.0
+        exp    = df['amount'].sum()
+        net    = rev - exp
+        margin = (net / rev * 100) if rev else 0
+
+        st.subheader("Report Preview")
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Revenue",      f"${rev:,.2f}")
+        p2.metric("Expenses",     f"${exp:,.2f}")
+        p3.metric("Net Income",   f"${net:,.2f}")
+        p4.metric("Profit Margin", f"{margin:.1f}%")
+
+        if 'category' in df.columns:
+            st.caption(f"Categories present: {', '.join(df['category'].dropna().unique())}")
+
+        if st.button("📥 Generate PDF Report"):
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+
+            # --- Cover Page ---
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 22)
+            pdf.ln(35)
+            pdf.cell(0, 12, "AI Bookkeeping Specialist", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_font("Helvetica", "B", 15)
+            pdf.cell(0, 10, "Financial Quick Start Report", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_font("Helvetica", "", 12)
+            pdf.ln(6)
+            pdf.cell(0, 8, f"Client: {client}", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(0, 8, f"Report Date: {datetime.today().strftime('%B %d, %Y')}",
+                     new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.ln(12)
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(110, 110, 110)
+            pdf.multi_cell(0, 6,
+                "Prepared under 2026 IRS and GAAP standards. All figures are client-reported. "
+                "For internal use only.", align="C")
+
+            # --- Executive Summary ---
+            pdf.add_page()
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, "Executive Summary", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_draw_color(80, 80, 80)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(5)
+            pdf.set_font("Helvetica", "", 11)
+            for label, val in [
+                ("Total Revenue",       f"${rev:,.2f}"),
+                ("Total Expenses",      f"${exp:,.2f}"),
+                ("Net Income",          f"${net:,.2f}"),
+                ("Profit Margin",       f"{margin:.1f}%"),
+                ("Total Transactions",  str(len(df))),
+                ("IRS Flags (>$75)",    str(len(df[df['amount'] > 75]))),
+                ("GAAP Flags (>$2K)",   str(len(df[df['amount'] > 2000]))),
+            ]:
+                pdf.cell(90, 8, label)
+                pdf.cell(90, 8, val, new_x="LMARGIN", new_y="NEXT")
+
+            # --- Top 10 Transactions Table ---
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, "Top 10 Transactions by Amount", new_x="LMARGIN", new_y="NEXT")
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(4)
+            pdf.set_fill_color(220, 220, 220)
+            pdf.set_font("Helvetica", "B", 9)
+            for hdr, w in [("Description", 58), ("Date", 28), ("Amount ($)", 30), ("Category", 34)]:
+                pdf.cell(w, 8, hdr, border=1, fill=True)
+            pdf.ln()
+            pdf.set_font("Helvetica", "", 9)
+            top10 = df.nlargest(10, 'amount')
+            for _, row in top10.iterrows():
+                pdf.cell(58, 7, str(row.get('description', ''))[:30], border=1)
+                pdf.cell(28, 7, str(row.get('date', ''))[:10],         border=1)
+                pdf.cell(30, 7, f"${row['amount']:,.2f}",               border=1)
+                pdf.cell(34, 7, str(row.get('category', 'N/A'))[:20],  border=1)
+                pdf.ln()
+
+            # --- IRS Compliance Summary ---
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, "IRS Compliance Summary — IRC §274 ($75 Rule)",
+                     new_x="LMARGIN", new_y="NEXT")
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.ln(5)
+            flagged = df[df['amount'] > 75]
+            cleared = df[df['amount'] <= 75]
+            pdf.set_font("Helvetica", "", 11)
+            for label, val in [
+                ("Flagged Transactions (>$75):", str(len(flagged))),
+                ("Cleared Transactions (≤$75):", str(len(cleared))),
+                ("Total Amount Flagged:",         f"${flagged['amount'].sum():,.2f}"),
+                ("Reconciliation Score:",         f"{int(100-(len(flagged)/len(df))*100)}%"),
+            ]:
+                pdf.cell(100, 8, label)
+                pdf.cell(80,  8, val, new_x="LMARGIN", new_y="NEXT")
+
+            pdf_bytes = bytes(pdf.output())
+            fname = f"{client}_report_{datetime.today().strftime('%Y%m%d')}.pdf"
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_bytes,
+                file_name=fname,
+                mime="application/pdf"
+            )
+            st.success(f"Report '{fname}' is ready for download.")
+
+# --- 12. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
     st.title("💬 AI Tax Auditor (Zero-Knowledge Mode)")
     for msg in st.session_state.messages:
