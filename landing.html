@@ -56,7 +56,7 @@
     }
 
     /* ─── Utility ────────────────────────────────────────────── */
-    .container { max-width: 1160px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
+    .container { max-width: 100%; margin: 0 auto; padding: 0 48px; position: relative; z-index: 1; }
     .grad-text {
       background: var(--grad);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -210,7 +210,7 @@
       padding: 80px 0 100px; position: relative; z-index: 1;
     }
     .browser-frame {
-      max-width: 1020px; margin: 0 auto;
+      max-width: 100%; margin: 0 auto;
       border-radius: 16px; overflow: hidden;
       border: 1px solid var(--border2);
       box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
@@ -347,11 +347,12 @@
     /* ─── Feature cards ──────────────────────────────────────── */
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 18px;
     }
-    @media (max-width: 860px) { .features-grid { grid-template-columns: repeat(2,1fr); } }
-    @media (max-width: 560px) { .features-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1100px) { .features-grid { grid-template-columns: repeat(3,1fr); } }
+    @media (max-width: 760px)  { .features-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 480px)  { .features-grid { grid-template-columns: 1fr; } }
 
     .feat-card {
       background: var(--card);
@@ -475,8 +476,8 @@
 
     /* ─── Pipeline ───────────────────────────────────────────── */
     .pipeline-grid {
-      display: grid; grid-template-columns: repeat(2,1fr); gap: 12px;
-      max-width: 900px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 12px;
+      max-width: 100%; margin: 0 auto;
     }
     @media (max-width: 640px) { .pipeline-grid { grid-template-columns: 1fr; } }
     .pipe-card {
@@ -530,7 +531,7 @@
     /* ─── Pricing ────────────────────────────────────────────── */
     .pricing-grid {
       display: grid; grid-template-columns: repeat(2,1fr);
-      gap: 22px; max-width: 780px; margin: 0 auto;
+      gap: 22px; max-width: 900px; margin: 0 auto;
     }
     @media (max-width: 640px) { .pricing-grid { grid-template-columns: 1fr; } }
 
