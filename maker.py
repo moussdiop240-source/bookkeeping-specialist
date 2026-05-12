@@ -1179,7 +1179,7 @@ elif st.session_state.page == "💳 Subscription":
         st.markdown("- One-time activation fee\n- Full vault access\n- Audit-ready PDF reports\n- Priority support")
         if not setup_paid:
             key_in = st.text_input("Enter license key to activate", key="setup_key",
-                                   placeholder="SETUP-299")
+                                   placeholder="Enter your license key")
             if st.button("Activate Now"):
                 if key_in.strip().upper() == "SETUP-299":
                     _activate_license(cid)
@@ -1195,7 +1195,7 @@ elif st.session_state.page == "💳 Subscription":
         st.subheader(f"Monthly — ${MONTHLY_FEE:,.2f}/mo")
         st.markdown("- Renews access for 30 days\n- All AI features included\n- Agentic Debate + CFO Dashboard\n- Cancel anytime")
         renew_key = st.text_input("Enter renewal key", key="renew_key",
-                                  placeholder="RENEW-4999")
+                                  placeholder="Enter your renewal key")
         if st.button("Renew Subscription"):
             if renew_key.strip().upper() == "RENEW-4999":
                 _renew_license(cid)
@@ -1284,7 +1284,7 @@ elif st.session_state.page == "💳 Subscription":
                         st.error(f"Verification failed (status: {status}). Check your Stripe key.")
 
     st.divider()
-    st.caption("Demo keys: **SETUP-299** (activation) · **RENEW-4999** (renewal).")
+    st.caption("Contact your administrator for a license key.")
 
 # --- 8. PHASE: ENHANCED AGENTIC DEBATE ---
 elif st.session_state.page == "🤖 Agentic Debate":
@@ -2266,7 +2266,8 @@ elif st.session_state.page == "📧 Email Delivery":
         smtp_pass = ec2.text_input("Password",   value=cfg.get("smtp_password", ""), type="password")
         from_addr = st.text_input("From Address (optional — defaults to Username)",
                                   value=cfg.get("smtp_from_addr", ""))
-        if st.button("💾 Save SMTP Settings"):
+        col_save, col_test = st.columns(2)
+        if col_save.button("💾 Save SMTP Settings", use_container_width=True):
             _save_settings({
                 "smtp_host":      smtp_host,
                 "smtp_port":      smtp_port,
@@ -2276,6 +2277,16 @@ elif st.session_state.page == "📧 Email Delivery":
             })
             st.success("SMTP settings saved.")
             st.rerun()
+        if col_test.button("🧪 Test Connection", use_container_width=True,
+                           disabled=not (smtp_host and smtp_user and smtp_pass)):
+            try:
+                with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as srv:
+                    srv.ehlo()
+                    srv.starttls()
+                    srv.login(smtp_user, smtp_pass)
+                st.success("✅ SMTP connection successful — credentials are valid.")
+            except Exception as _smtp_err:
+                st.error(f"Connection failed: {_smtp_err}")
 
     st.divider()
 
@@ -2623,9 +2634,9 @@ elif st.session_state.page == "📥 Ingestion":
             return set()
 
     # ── Page UI ──────────────────────────────────────────────────
+    _gate()
     st.title(f"📥 Bank Statement Import: {st.session_state.active_name}")
     st.caption("Supports CSV, Excel, OFX, and QFX — auto-detects columns, removes duplicates, and AI-categorizes on import.")
-    _gate()
 
     up = st.file_uploader(
         "Drop your bank statement here",
