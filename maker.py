@@ -820,6 +820,7 @@ defaults = {
     'last_pdf_fname': "",
     '_backup_bytes': None,
     '_backup_fname': "",
+    '_smtp_test_passed': False,
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -2331,7 +2332,6 @@ elif st.session_state.page == "📋 Tax Readiness":
 # --- 13. PHASE: EMAIL DELIVERY ---
 elif st.session_state.page == "📧 Email Delivery":
     st.title("📧 Email Delivery")
-    st.caption("Send PDF reports and invoice summaries directly to client email via SMTP")
     _gate()
 
     cid         = st.session_state.active_uuid
@@ -2344,40 +2344,134 @@ elif st.session_state.page == "📧 Email Delivery":
     conn_r.close()
     client_email = (_row[0] if _row else "") or ""
 
-    # --- SMTP Configuration ---
-    with st.expander("⚙️ SMTP Configuration", expanded=not cfg.get("smtp_host")):
-        st.caption("Credentials are stored locally in vault/settings.json — never transmitted to the cloud.")
-        ec1, ec2 = st.columns(2)
-        smtp_host = ec1.text_input("SMTP Host",  value=cfg.get("smtp_host", "smtp.gmail.com"))
-        smtp_port = ec2.number_input("Port",      value=int(cfg.get("smtp_port", 587)), min_value=1, max_value=65535)
-        smtp_user = ec1.text_input("Username",   value=cfg.get("smtp_user", ""))
-        smtp_pass = ec2.text_input("Password",   value=cfg.get("smtp_password", ""), type="password")
-        from_addr = st.text_input("From Address (optional — defaults to Username)",
-                                  value=cfg.get("smtp_from_addr", ""))
-        col_save, col_test = st.columns(2)
-        if col_save.button("💾 Save SMTP Settings", use_container_width=True):
+    smtp_configured = bool(cfg.get("smtp_host") and cfg.get("smtp_user") and cfg.get("smtp_password"))
+
+    # ── SMTP ONBOARDING WIZARD (shown only when not yet configured) ──
+    if not smtp_configured:
+        st.markdown("""
+        <div style="background:linear-gradient(145deg,#101C2E,#0C1526);border:1px solid #162032;
+             border-radius:16px;padding:28px 32px;margin-bottom:24px;">
+            <div style="font-size:1.6rem;font-weight:800;color:#F0F4FA;margin-bottom:6px;">
+                📬 Email Setup Wizard
+            </div>
+            <div style="color:#8A9BB5;font-size:0.93rem;line-height:1.6;">
+                Connect your email account to send audit-ready PDF reports and invoices
+                directly to clients. Credentials stay 100% local — never sent to the cloud.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Provider presets
+        PROVIDERS = {
+            "Gmail":        {"host": "smtp.gmail.com",   "port": 587},
+            "Outlook/365":  {"host": "smtp.office365.com","port": 587},
+            "Yahoo Mail":   {"host": "smtp.mail.yahoo.com","port": 587},
+            "iCloud Mail":  {"host": "smtp.mail.me.com", "port": 587},
+            "Custom SMTP":  {"host": "",                  "port": 587},
+        }
+
+        st.subheader("Step 1 — Choose your email provider")
+        provider = st.radio("Provider", list(PROVIDERS.keys()), horizontal=True,
+                            key="smtp_wizard_provider")
+        preset = PROVIDERS[provider]
+
+        # Gmail-specific guide
+        if provider == "Gmail":
+            with st.expander("📖 Gmail setup guide — click to expand", expanded=True):
+                st.markdown("""
+**Gmail requires an App Password** (not your regular Gmail password).
+Here's how to get one in 2 minutes:
+
+1. Go to **myaccount.google.com → Security**
+2. Under *How you sign in to Google*, enable **2-Step Verification** (required)
+3. Search **"App passwords"** in the security page search bar
+4. Select app: **Mail** · Select device: **Windows Computer**
+5. Click **Generate** — copy the 16-character password shown
+6. Paste it in the **Password** field below
+
+> 🔒 The App Password only appears once. Save it now.
+                """)
+
+        elif provider == "Outlook/365":
+            with st.expander("📖 Outlook/365 setup guide", expanded=True):
+                st.markdown("""
+**For personal Outlook.com accounts:**
+- Username: your full email (e.g. `you@outlook.com`)
+- Password: your regular Outlook password
+- If MFA is enabled: create an App Password under account.microsoft.com → Security
+
+**For Microsoft 365 (work accounts):**
+- Your IT admin must enable SMTP AUTH for your account
+- Go to admin.microsoft.com → Users → Active users → your account → Mail → Manage email apps
+- Enable **Authenticated SMTP**
+                """)
+
+        elif provider in ("Yahoo Mail", "iCloud Mail"):
+            with st.expander(f"📖 {provider} setup guide", expanded=True):
+                st.markdown(f"""
+**{provider} requires an App Password:**
+- Yahoo: myaccount.yahoo.com → Security → Generate app password
+- iCloud: appleid.apple.com → Sign-In and Security → App-Specific Passwords
+- Use your full email as the username
+                """)
+
+        st.divider()
+        st.subheader("Step 2 — Enter your credentials")
+        st.caption("Stored in vault/settings.json on your machine only.")
+
+        wz1, wz2 = st.columns(2)
+        wz_host = wz1.text_input("SMTP Host", value=preset["host"], key="wz_host")
+        wz_port = wz2.number_input("Port", value=preset["port"], min_value=1,
+                                   max_value=65535, key="wz_port")
+        wz_user = wz1.text_input("Email Address", placeholder="you@gmail.com", key="wz_user")
+        wz_pass = wz2.text_input(
+            "App Password" if provider != "Custom SMTP" else "Password",
+            type="password", key="wz_pass",
+            placeholder="xxxx xxxx xxxx xxxx" if provider == "Gmail" else ""
+        )
+
+        st.divider()
+        st.subheader("Step 3 — Test & Save")
+
+        wz_c1, wz_c2 = st.columns(2)
+        if wz_c1.button("🧪 Test Connection", use_container_width=True,
+                        disabled=not (wz_host and wz_user and wz_pass)):
+            with st.spinner("Connecting…"):
+                try:
+                    with smtplib.SMTP(wz_host, int(wz_port), timeout=12) as srv:
+                        srv.ehlo()
+                        srv.starttls()
+                        srv.login(wz_user, wz_pass)
+                    st.success("✅ Connection successful! Click **Save & Finish** to continue.")
+                    st.session_state["_smtp_test_passed"] = True
+                except smtplib.SMTPAuthenticationError:
+                    st.error("❌ Authentication failed — wrong email or App Password. "
+                             "Make sure you're using an App Password, not your regular password.")
+                    st.session_state["_smtp_test_passed"] = False
+                except smtplib.SMTPConnectError:
+                    st.error(f"❌ Could not connect to {wz_host}:{wz_port}. "
+                             "Check host/port or your network connection.")
+                    st.session_state["_smtp_test_passed"] = False
+                except Exception as _e:
+                    st.error(f"❌ {_e}")
+                    st.session_state["_smtp_test_passed"] = False
+
+        if wz_c2.button("💾 Save & Finish", use_container_width=True,
+                        disabled=not (wz_host and wz_user and wz_pass)):
             _save_settings({
-                "smtp_host":      smtp_host,
-                "smtp_port":      smtp_port,
-                "smtp_user":      smtp_user,
-                "smtp_password":  smtp_pass,
-                "smtp_from_addr": from_addr or smtp_user,
+                "smtp_host":      wz_host,
+                "smtp_port":      int(wz_port),
+                "smtp_user":      wz_user,
+                "smtp_password":  wz_pass,
+                "smtp_from_addr": wz_user,
             })
-            st.success("SMTP settings saved.")
+            st.session_state.pop("_smtp_test_passed", None)
+            st.success("✅ SMTP configured! Reloading…")
             st.rerun()
-        if col_test.button("🧪 Test Connection", use_container_width=True,
-                           disabled=not (smtp_host and smtp_user and smtp_pass)):
-            try:
-                with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as srv:
-                    srv.ehlo()
-                    srv.starttls()
-                    srv.login(smtp_user, smtp_pass)
-                st.success("✅ SMTP connection successful — credentials are valid.")
-            except Exception as _smtp_err:
-                st.error(f"Connection failed: {_smtp_err}")
 
-    st.divider()
+        st.stop()  # Don't render the send panel until setup is complete
 
+    # ── CONFIGURED: normal send panel ───────────────────────────────
     smtp_cfg = {
         "host":      cfg.get("smtp_host", ""),
         "port":      int(cfg.get("smtp_port", 587)),
@@ -2385,10 +2479,37 @@ elif st.session_state.page == "📧 Email Delivery":
         "password":  cfg.get("smtp_password", ""),
         "from_addr": cfg.get("smtp_from_addr", cfg.get("smtp_user", "")),
     }
-    smtp_ready = bool(smtp_cfg["host"] and smtp_cfg["user"] and smtp_cfg["password"])
+    smtp_ready = True
 
-    if not smtp_ready:
-        st.warning("Configure SMTP settings above before sending emails.")
+    # Reconfigure button
+    with st.expander("⚙️ SMTP Settings", expanded=False):
+        st.caption(f"Connected as **{cfg.get('smtp_user')}** via `{cfg.get('smtp_host')}`")
+        ec1, ec2 = st.columns(2)
+        smtp_host = ec1.text_input("SMTP Host",  value=cfg.get("smtp_host", ""))
+        smtp_port = ec2.number_input("Port",      value=int(cfg.get("smtp_port", 587)),
+                                     min_value=1, max_value=65535)
+        smtp_user = ec1.text_input("Username",   value=cfg.get("smtp_user", ""))
+        smtp_pass = ec2.text_input("Password",   value=cfg.get("smtp_password", ""),
+                                   type="password")
+        rc1, rc2, rc3 = st.columns(3)
+        if rc1.button("💾 Save", use_container_width=True):
+            _save_settings({"smtp_host": smtp_host, "smtp_port": smtp_port,
+                            "smtp_user": smtp_user, "smtp_password": smtp_pass,
+                            "smtp_from_addr": smtp_user})
+            st.success("Saved."); st.rerun()
+        if rc2.button("🧪 Test", use_container_width=True):
+            try:
+                with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as srv:
+                    srv.ehlo(); srv.starttls(); srv.login(smtp_user, smtp_pass)
+                st.success("✅ Connection OK")
+            except Exception as _e:
+                st.error(f"Failed: {_e}")
+        if rc3.button("🗑️ Reset Setup", use_container_width=True):
+            _save_settings({"smtp_host": "", "smtp_port": 587,
+                            "smtp_user": "", "smtp_password": "", "smtp_from_addr": ""})
+            st.rerun()
+
+    st.divider()
 
     # --- Recipient ---
     to_addr = st.text_input(
