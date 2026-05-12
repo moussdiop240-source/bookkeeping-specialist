@@ -1,0 +1,20 @@
+# Local databases
+*.db
+vault/
+clients/
+
+# Screenshots and test artifacts
+*.png
+streamlit_log.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude Code internals
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store
