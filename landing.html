@@ -205,6 +205,125 @@
     }
     .trust-item .icon { font-size: 1rem; }
 
+    /* ─── App mockup ─────────────────────────────────────────── */
+    .mockup-section {
+      padding: 80px 0 100px; position: relative; z-index: 1;
+    }
+    .browser-frame {
+      max-width: 1020px; margin: 0 auto;
+      border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--border2);
+      box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+    }
+    /* Chrome bar */
+    .browser-chrome {
+      background: #111827; padding: 10px 16px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .chrome-dots { display: flex; gap: 6px; }
+    .chrome-dots span {
+      width: 11px; height: 11px; border-radius: 50%;
+    }
+    .dot-red    { background: #EF4444; }
+    .dot-yellow { background: #F59E0B; }
+    .dot-green  { background: #22C55E; }
+    .chrome-bar {
+      flex: 1; background: #1F2937; border-radius: 6px;
+      padding: 5px 12px; font-size: 0.72rem; color: #4B5563;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .chrome-bar .lock { color: #22C55E; font-size: 0.65rem; }
+
+    /* App shell */
+    .app-shell {
+      display: grid; grid-template-columns: 200px 1fr;
+      background: #080D18; min-height: 480px;
+    }
+    /* Sidebar */
+    .app-sidebar {
+      background: #0C1526;
+      border-right: 1px solid #162032;
+      padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .sidebar-logo {
+      font-size: 0.78rem; font-weight: 800; color: #00C896;
+      padding: 8px 8px 16px; border-bottom: 1px solid #162032; margin-bottom: 8px;
+    }
+    .sidebar-logo small { display: block; color: #2A3A50; font-size: 0.6rem; font-weight: 500; margin-top: 2px; }
+    .sidebar-item {
+      font-size: 0.72rem; font-weight: 500; color: #546880;
+      padding: 7px 10px; border-radius: 6px; cursor: default;
+    }
+    .sidebar-item.active {
+      background: #162032; color: #DDE6F0; font-weight: 600;
+    }
+    .sidebar-item.highlight {
+      color: #00C896;
+    }
+
+    /* Main content */
+    .app-main { padding: 20px 22px; overflow: hidden; }
+    .app-title {
+      font-size: 1rem; font-weight: 800; color: #F0F4FA;
+      border-bottom: 2px solid #00C896; padding-bottom: 8px;
+      margin-bottom: 16px; letter-spacing: -0.01em;
+    }
+
+    /* KPI row */
+    .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi-box {
+      background: linear-gradient(145deg,#101C2E,#0C1526);
+      border: 1px solid #162032; border-radius: 10px; padding: 12px 14px;
+    }
+    .kpi-box .klabel { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; color: #546880; margin-bottom: 4px; }
+    .kpi-box .kvalue { font-size: 1.05rem; font-weight: 700; color: #00C896; }
+    .kpi-box .kdelta { font-size: 0.6rem; color: #2A3A50; margin-top: 2px; }
+
+    /* Chart rows */
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .chart-box {
+      background: #101C2E; border: 1px solid #162032; border-radius: 10px; padding: 12px;
+    }
+    .chart-box .chart-title { font-size: 0.68rem; font-weight: 700; color: #8A9BB5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* Mini bar chart */
+    .mini-bars { display: flex; align-items: flex-end; gap: 4px; height: 56px; }
+    .mini-bar { flex: 1; border-radius: 3px 3px 0 0; }
+
+    /* Mini donut */
+    .mini-donut-wrap { display: flex; align-items: center; justify-content: center; height: 56px; }
+    .mini-donut {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: conic-gradient(#00C896 0% 38%, #0070F3 38% 62%, #7C3AED 62% 80%, #F59E0B 80% 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mini-donut-inner { width: 28px; height: 28px; border-radius: 50%; background: #101C2E; }
+
+    /* Debate preview */
+    .debate-row { display: flex; flex-direction: column; gap: 6px; }
+    .debate-item {
+      background: #0C1526; border: 1px solid #162032; border-radius: 7px;
+      padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+    }
+    .debate-item .di-icon { font-size: 0.75rem; }
+    .debate-item .di-desc { font-size: 0.65rem; color: #8A9BB5; flex: 1; }
+    .debate-item .di-amount { font-size: 0.65rem; font-weight: 700; color: #DDE6F0; }
+    .debate-item .di-badge {
+      font-size: 0.55rem; font-weight: 700; padding: 2px 6px; border-radius: 3px;
+    }
+    .badge-high   { background: rgba(239,68,68,0.15);  color: #EF4444; }
+    .badge-medium { background: rgba(245,158,11,0.15); color: #F59E0B; }
+    .badge-clean  { background: rgba(0,200,150,0.12);  color: #00C896; }
+
+    /* Tabs */
+    .app-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #162032; }
+    .app-tab {
+      font-size: 0.68rem; font-weight: 600; padding: 7px 12px;
+      color: #546880; border-bottom: 2px solid transparent; cursor: default;
+    }
+    .app-tab.active { color: #00C896; border-bottom-color: #00C896; }
+
     /* ─── Sections ───────────────────────────────────────────── */
     .section { padding: 100px 0; position: relative; z-index: 1; }
     .section-alt {
@@ -583,6 +702,136 @@
     </div>
   </div>
 </div>
+
+<!-- ── App Mockup ─────────────────────────────────────────────── -->
+<section class="mockup-section">
+  <div class="container">
+    <p class="sec-label reveal" style="margin-bottom:10px;">Live Preview</p>
+    <h2 class="sec-title reveal reveal-d1" style="margin-bottom:12px;">See It in Action</h2>
+    <p class="sec-sub reveal reveal-d2" style="margin-bottom:40px;">Every screen is built for speed and clarity — dark-themed, interactive, and audit-ready.</p>
+
+    <div class="browser-frame reveal reveal-d1">
+      <!-- Chrome bar -->
+      <div class="browser-chrome">
+        <div class="chrome-dots">
+          <span class="dot-red"></span>
+          <span class="dot-yellow"></span>
+          <span class="dot-green"></span>
+        </div>
+        <div class="chrome-bar">
+          <span class="lock">🔒</span> localhost:8501
+        </div>
+      </div>
+
+      <!-- App shell -->
+      <div class="app-shell">
+
+        <!-- Sidebar -->
+        <div class="app-sidebar">
+          <div class="sidebar-logo">📊 AI Bookkeeping<small>SPECIALIST · 2026 EDITION</small></div>
+          <div class="sidebar-item">🏢 Client Management</div>
+          <div class="sidebar-item">💳 Subscription</div>
+          <div class="sidebar-item">📥 Ingestion</div>
+          <div class="sidebar-item">💰 Revenue</div>
+          <div class="sidebar-item">🏷️ AI Categorization</div>
+          <div class="sidebar-item highlight">🤖 Agentic Debate</div>
+          <div class="sidebar-item">📊 Financial Reporting</div>
+          <div class="sidebar-item">📑 Financial Statements</div>
+          <div class="sidebar-item active">📈 CFO Dashboard</div>
+          <div class="sidebar-item">📄 PDF Reports</div>
+          <div class="sidebar-item">📧 Email Delivery</div>
+          <div class="sidebar-item">💬 AI CFO Chat</div>
+        </div>
+
+        <!-- Main panel — CFO Dashboard -->
+        <div class="app-main">
+          <div class="app-title">📈 CFO Dashboard</div>
+
+          <!-- KPI cards -->
+          <div class="kpi-row">
+            <div class="kpi-box">
+              <div class="klabel">Total Revenue</div>
+              <div class="kvalue">$84,200</div>
+              <div class="kdelta">↑ Q2 2026</div>
+            </div>
+            <div class="kpi-box">
+              <div class="klabel">Total Expenses</div>
+              <div class="kvalue">$51,340</div>
+              <div class="kdelta">148 transactions</div>
+            </div>
+            <div class="kpi-box">
+              <div class="klabel">Net Income</div>
+              <div class="kvalue">$32,860</div>
+              <div class="kdelta">↑ vs 15% target</div>
+            </div>
+            <div class="kpi-box">
+              <div class="klabel">Avg Burn / Entry</div>
+              <div class="kvalue">$346</div>
+              <div class="kdelta">per transaction</div>
+            </div>
+          </div>
+
+          <!-- Charts row -->
+          <div class="chart-row">
+            <div class="chart-box">
+              <div class="chart-title">Burn Rate Trend</div>
+              <div class="mini-bars">
+                <div class="mini-bar" style="height:22%;background:#0070F3;opacity:0.5"></div>
+                <div class="mini-bar" style="height:34%;background:#0070F3;opacity:0.6"></div>
+                <div class="mini-bar" style="height:45%;background:#0070F3;opacity:0.7"></div>
+                <div class="mini-bar" style="height:52%;background:#0070F3;opacity:0.75"></div>
+                <div class="mini-bar" style="height:61%;background:#0070F3;opacity:0.8"></div>
+                <div class="mini-bar" style="height:70%;background:#00C896;opacity:0.85"></div>
+                <div class="mini-bar" style="height:82%;background:#00C896;opacity:0.9"></div>
+                <div class="mini-bar" style="height:91%;background:#00C896"></div>
+                <div class="mini-bar" style="height:100%;background:#00C896"></div>
+              </div>
+            </div>
+            <div class="chart-box">
+              <div class="chart-title">Spend by Category</div>
+              <div class="mini-donut-wrap">
+                <div class="mini-donut"><div class="mini-donut-inner"></div></div>
+                <div style="margin-left:14px;display:flex;flex-direction:column;gap:4px;">
+                  <div style="font-size:0.6rem;color:#8A9BB5;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#00C896;display:inline-block"></span>Travel 38%</div>
+                  <div style="font-size:0.6rem;color:#8A9BB5;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#0070F3;display:inline-block"></span>Software 24%</div>
+                  <div style="font-size:0.6rem;color:#8A9BB5;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#7C3AED;display:inline-block"></span>Office 18%</div>
+                  <div style="font-size:0.6rem;color:#8A9BB5;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#F59E0B;display:inline-block"></span>Other 20%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agentic debate preview -->
+          <div class="app-tabs">
+            <div class="app-tab active">🤖 Agentic Debate</div>
+            <div class="app-tab">📊 Risk Flags</div>
+            <div class="app-tab">📑 Statements</div>
+          </div>
+          <div class="debate-row">
+            <div class="debate-item">
+              <div class="di-icon">🔴</div>
+              <div class="di-desc">Annual software license renewal — Acme Corp</div>
+              <div class="di-amount">$5,400</div>
+              <div class="di-badge badge-high">HIGH RISK</div>
+            </div>
+            <div class="debate-item">
+              <div class="di-icon">🟠</div>
+              <div class="di-desc">Client dinner — Q2 business development</div>
+              <div class="di-amount">$320</div>
+              <div class="di-badge badge-medium">MEDIUM RISK</div>
+            </div>
+            <div class="debate-item">
+              <div class="di-icon">✅</div>
+              <div class="di-desc">Office supplies — pens, paper, folders</div>
+              <div class="di-amount">$48</div>
+              <div class="di-badge badge-clean">CLEAN</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ── Features ───────────────────────────────────────────────── -->
 <section class="section" id="features">
