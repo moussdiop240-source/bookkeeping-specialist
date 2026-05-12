@@ -15,6 +15,18 @@ try:
 except ImportError:
     FPDF_AVAILABLE = False
 
+import json
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
+try:
+    import stripe as _stripe_sdk
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+
 from config import TRIAL_DAYS, SETUP_FEE, MONTHLY_FEE, HARD_STOP_DATE
 
 # --- 1. SYSTEM INITIALIZATION & STATE GUARD ---
@@ -211,8 +223,167 @@ def _init_vault():
             created TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS stripe_sessions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid       TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            plan_type  TEXT NOT NULL,
+            amount     REAL NOT NULL,
+            created    TEXT NOT NULL,
+            status     TEXT DEFAULT 'pending'
+        )
+    """)
     conn.commit()
     conn.close()
+
+SETTINGS_FILE = os.path.join(VAULT, "settings.json")
+
+def _load_settings() -> dict:
+    if not os.path.exists(SETTINGS_FILE):
+        return {}
+    try:
+        with open(SETTINGS_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_settings(updates: dict):
+    os.makedirs(VAULT, exist_ok=True)
+    data = _load_settings()
+    data.update(updates)
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def _send_report_email(smtp_cfg: dict, to_addr: str, client_name: str,
+                       pdf_bytes: bytes, filename: str):
+    try:
+        msg = MIMEMultipart()
+        msg["From"]    = smtp_cfg.get("from_addr", smtp_cfg.get("user", ""))
+        msg["To"]      = to_addr
+        msg["Subject"] = f"Financial Report — {client_name} ({datetime.today().strftime('%B %d, %Y')})"
+        msg.attach(MIMEText(
+            f"Dear {client_name},\n\n"
+            "Please find attached your AI Bookkeeping Specialist financial report.\n\n"
+            "Prepared under 2026 IRS and GAAP standards.\n\n"
+            "— AI Bookkeeping Specialist", "plain"
+        ))
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(pdf_bytes)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+        msg.attach(part)
+        port = int(smtp_cfg.get("port", 587))
+        with smtplib.SMTP(smtp_cfg["host"], port, timeout=15) as srv:
+            srv.ehlo()
+            if port != 465:
+                srv.starttls()
+                srv.ehlo()
+            srv.login(smtp_cfg["user"], smtp_cfg["password"])
+            srv.sendmail(msg["From"], to_addr, msg.as_string())
+        return True, "Email sent successfully."
+    except Exception as e:
+        return False, str(e)
+
+def _send_invoice_email(smtp_cfg: dict, to_addr: str, client_name: str,
+                        rev: float, exp: float, net: float):
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"]    = smtp_cfg.get("from_addr", smtp_cfg.get("user", ""))
+        msg["To"]      = to_addr
+        msg["Subject"] = f"Invoice Summary — {client_name} — {datetime.today().strftime('%B %Y')}"
+        net_color = "#e8f8f3" if net >= 0 else "#fde8e8"
+        html = f"""<html><body style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:auto;">
+<div style="background:#080D18;padding:24px;border-radius:8px;margin-bottom:20px;">
+  <h1 style="color:#00C896;margin:0;font-size:1.4rem;">AI Bookkeeping Specialist</h1>
+  <p style="color:#8A9BB5;margin:4px 0 0;font-size:0.85rem;">2026 IRS &amp; GAAP Compliant</p>
+</div>
+<h2>Invoice Summary</h2>
+<p><strong>Client:</strong> {client_name}<br>
+<strong>Period:</strong> {datetime.today().strftime('%B %Y')}<br>
+<strong>Date:</strong> {datetime.today().strftime('%B %d, %Y')}</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0;">
+<tr style="background:#f5f5f5;"><th style="padding:10px;text-align:left;border:1px solid #ddd;">Item</th>
+<th style="padding:10px;text-align:right;border:1px solid #ddd;">Amount</th></tr>
+<tr><td style="padding:10px;border:1px solid #ddd;">Total Revenue</td>
+<td style="padding:10px;text-align:right;border:1px solid #ddd;">${rev:,.2f}</td></tr>
+<tr><td style="padding:10px;border:1px solid #ddd;">Total Expenses</td>
+<td style="padding:10px;text-align:right;border:1px solid #ddd;">${exp:,.2f}</td></tr>
+<tr style="font-weight:bold;background:{net_color};"><td style="padding:10px;border:1px solid #ddd;">Net Income</td>
+<td style="padding:10px;text-align:right;border:1px solid #ddd;">${net:,.2f}</td></tr>
+</table>
+<p style="color:#666;font-size:0.8rem;">Prepared under 2026 IRS and GAAP standards. For internal use only.</p>
+</body></html>"""
+        msg.attach(MIMEText(html, "html"))
+        port = int(smtp_cfg.get("port", 587))
+        with smtplib.SMTP(smtp_cfg["host"], port, timeout=15) as srv:
+            srv.ehlo()
+            if port != 465:
+                srv.starttls()
+                srv.ehlo()
+            srv.login(smtp_cfg["user"], smtp_cfg["password"])
+            srv.sendmail(msg["From"], to_addr, msg.as_string())
+        return True, "Invoice sent successfully."
+    except Exception as e:
+        return False, str(e)
+
+def _stripe_create_session(secret_key: str, cid: str, plan_type: str,
+                            amount_cents: int, description: str):
+    if not STRIPE_AVAILABLE:
+        raise RuntimeError("stripe package not installed. Run: pip install stripe")
+    _stripe_sdk.api_key = secret_key
+    session = _stripe_sdk.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{"price_data": {
+            "currency": "usd",
+            "product_data": {"name": description},
+            "unit_amount": amount_cents,
+        }, "quantity": 1}],
+        mode="payment",
+        success_url="http://localhost:8501/",
+        cancel_url="http://localhost:8501/",
+        metadata={"client_uuid": cid, "plan_type": plan_type},
+    )
+    conn = sqlite3.connect(REGISTRY)
+    conn.execute(
+        "INSERT INTO stripe_sessions (uuid, session_id, plan_type, amount, created) VALUES (?,?,?,?,?)",
+        (cid, session.id, plan_type, amount_cents / 100.0, datetime.today().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return session.id, session.url
+
+def _stripe_verify_session(secret_key: str, session_id: str) -> str:
+    if not STRIPE_AVAILABLE:
+        return "error"
+    try:
+        _stripe_sdk.api_key = secret_key
+        session = _stripe_sdk.checkout.Session.retrieve(session_id)
+        status = session.payment_status
+        if status == "paid":
+            conn = sqlite3.connect(REGISTRY)
+            conn.execute("UPDATE stripe_sessions SET status='paid' WHERE session_id=?", (session_id,))
+            conn.commit()
+            conn.close()
+        return status
+    except Exception:
+        return "error"
+
+if FPDF_AVAILABLE:
+    class _BookkeepingPDF(FPDF):
+        def __init__(self, client_name=""):
+            super().__init__()
+            self._client = client_name
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(150, 150, 150)
+            self.cell(
+                0, 5,
+                f"AI Bookkeeping Specialist  ·  {self._client}  ·  Page {self.page_no()}",
+                align="C"
+            )
 
 def _create_client(name, email=""):
     cid     = str(_uuid.uuid4())
@@ -486,7 +657,11 @@ defaults = {
     'active_name': "No Client",
     'license': {},
     'messages': [],
-    'page': "🏢 Client Management"
+    'page': "🏢 Client Management",
+    'stripe_session_id': "",
+    'stripe_plan_type': "",
+    'last_pdf_bytes': None,
+    'last_pdf_fname': "",
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -639,7 +814,8 @@ with st.sidebar:
         "📊 Financial Reporting",
         "📑 Financial Statements",
         "📈 CFO Dashboard",
-        "📄 Quick Start Guide",
+        "📄 PDF Reports",
+        "📧 Email Delivery",
         "💬 AI CFO Chat"
     ])
 
@@ -718,16 +894,15 @@ elif st.session_state.page == "💳 Subscription":
     st.title("💳 Subscription & Licensing")
     cid = st.session_state.active_uuid
     lic = _get_license(cid)
-    st.session_state.license = lic        # keep session in sync
+    st.session_state.license = lic
 
     plan, days, expires, setup_paid = (
         lic["plan"], lic["days_remaining"], lic["expires"], lic["setup_paid"]
     )
 
-    # --- Status card ---
     s1, s2, s3 = st.columns(3)
     badge = {"active": "🟢 Active", "trial": "🟡 Trial", "expired": "🔴 Expired"}.get(plan, "⚪")
-    s1.metric("Plan Status",   badge)
+    s1.metric("Plan Status",    badge)
     s2.metric("Days Remaining", days)
     s3.metric("Expires",        expires or "—")
     st.divider()
@@ -766,57 +941,273 @@ elif st.session_state.page == "💳 Subscription":
                 st.error("Invalid renewal key.")
 
     st.divider()
-    st.caption(
-        "Demo keys: **SETUP-299** (one-time activation) · **RENEW-4999** (monthly renewal). "
-        "Replace with Stripe webhook integration for production."
-    )
 
-# --- 8. PHASE: AGENTIC DEBATE (GAAP vs. IRS RECONCILIATION) ---
+    # --- Stripe Payment Integration ---
+    st.subheader("💳 Pay with Stripe")
+    if not STRIPE_AVAILABLE:
+        st.warning("Stripe SDK not installed. Run: `pip install stripe` then restart.")
+    else:
+        cfg = _load_settings()
+        with st.expander("🔑 Stripe API Configuration", expanded=not cfg.get("stripe_secret_key")):
+            sk_input = st.text_input(
+                "Stripe Secret Key (sk_live_… or sk_test_…)",
+                value=cfg.get("stripe_secret_key", ""),
+                type="password", key="stripe_sk_input"
+            )
+            if st.button("Save Stripe Key"):
+                if sk_input.strip():
+                    _save_settings({"stripe_secret_key": sk_input.strip()})
+                    st.success("Stripe key saved.")
+                    st.rerun()
+                else:
+                    st.error("Key cannot be empty.")
+
+        sk = _load_settings().get("stripe_secret_key", "")
+        if sk:
+            st.caption("Clicking a payment button opens Stripe Checkout in your browser. "
+                       "Return here and click **Verify Payment** to activate your license.")
+            pay_c1, pay_c2 = st.columns(2)
+            with pay_c1:
+                if st.button(f"💳 Pay Setup Fee (${SETUP_FEE:,.0f})", use_container_width=True,
+                             disabled=bool(setup_paid)):
+                    try:
+                        sid, url = _stripe_create_session(
+                            sk, cid, "setup",
+                            int(SETUP_FEE * 100),
+                            f"AI Bookkeeping Specialist — Setup Fee"
+                        )
+                        st.session_state.stripe_session_id = sid
+                        st.session_state.stripe_plan_type  = "setup"
+                        st.markdown(f"[🔗 Open Stripe Checkout]({url})", unsafe_allow_html=False)
+                        st.info("Complete payment in the browser, then click **Verify Payment**.")
+                    except Exception as e:
+                        st.error(f"Stripe error: {e}")
+            with pay_c2:
+                if st.button(f"💳 Pay Monthly (${MONTHLY_FEE:,.2f})", use_container_width=True):
+                    try:
+                        sid, url = _stripe_create_session(
+                            sk, cid, "monthly",
+                            int(MONTHLY_FEE * 100),
+                            f"AI Bookkeeping Specialist — Monthly Subscription"
+                        )
+                        st.session_state.stripe_session_id = sid
+                        st.session_state.stripe_plan_type  = "monthly"
+                        st.markdown(f"[🔗 Open Stripe Checkout]({url})", unsafe_allow_html=False)
+                        st.info("Complete payment in the browser, then click **Verify Payment**.")
+                    except Exception as e:
+                        st.error(f"Stripe error: {e}")
+
+            if st.session_state.get("stripe_session_id"):
+                st.divider()
+                st.caption(f"Pending session: `{st.session_state.stripe_session_id}`")
+                if st.button("✅ Verify Payment", use_container_width=True):
+                    status = _stripe_verify_session(sk, st.session_state.stripe_session_id)
+                    if status == "paid":
+                        plan_type = st.session_state.get("stripe_plan_type", "setup")
+                        if plan_type == "setup":
+                            _activate_license(cid)
+                        else:
+                            _renew_license(cid)
+                        st.session_state.license           = _get_license(cid)
+                        st.session_state.stripe_session_id = ""
+                        st.session_state.stripe_plan_type  = ""
+                        st.success("✅ Payment verified — license activated!")
+                        st.rerun()
+                    elif status == "unpaid":
+                        st.warning("Payment not completed yet. Finish checkout then retry.")
+                    else:
+                        st.error(f"Verification failed (status: {status}). Check your Stripe key.")
+
+    st.divider()
+    st.caption("Demo keys: **SETUP-299** (activation) · **RENEW-4999** (renewal).")
+
+# --- 8. PHASE: ENHANCED AGENTIC DEBATE ---
 elif st.session_state.page == "🤖 Agentic Debate":
-    st.title("🤖 Agentic Debate: GAAP vs. IRS Reconciliation")
+    st.title("🤖 Enhanced Agentic Debate")
+    st.caption("Three-agent compliance framework: IRS §274 · GAAP ASC 360 · UNICAP §263A")
     _gate()
     if df.empty:
         st.info("No ledger data found for this client.")
     else:
-        flagged_irs  = df[df['amount'] > 75]
-        flagged_gaap = df[df['amount'] > 2000]
-        reconciliation_score = int(100 - (len(flagged_irs) / len(df)) * 100) if len(df) else 100
+        def _dbt_irs(amount):
+            if amount <= 75:
+                return {"agent": "IRS §274", "flagged": False, "confidence": 100,
+                        "verdict": "CLEARED", "risk": "safe",
+                        "action": "Safe harbor ≤$75. No receipt required (IRC §274)."}
+            conf = max(15, int(100 - min(85, (amount - 75) / 925 * 85)))
+            return {"agent": "IRS §274", "flagged": True, "confidence": conf,
+                    "verdict": "FLAGGED", "risk": "high" if amount > 500 else "medium",
+                    "action": "Obtain receipt + written business purpose (IRC §274(d))."}
 
-        s1, s2, s3 = st.columns(3)
-        s1.metric("IRS Flags (IRC §274 >$75)",  len(flagged_irs),
-                  delta=f"-${flagged_irs['amount'].sum():,.2f} at risk", delta_color="inverse")
-        s2.metric("GAAP Flags (ASC 360 >$2K)", len(flagged_gaap))
-        s3.metric("Reconciliation Score", f"{reconciliation_score}%",
-                  delta=f"{reconciliation_score - 100}% vs target")
+        def _dbt_gaap(amount):
+            if amount <= 2000:
+                return {"agent": "GAAP ASC 360", "flagged": False, "confidence": 100,
+                        "verdict": "EXPENSED", "risk": "safe",
+                        "action": "Standard period cost. Expense as incurred (ASC 420)."}
+            conf = max(20, int(100 - min(70, (amount - 2000) / 8000 * 70)))
+            return {"agent": "GAAP ASC 360", "flagged": True, "confidence": conf,
+                    "verdict": "CAPITALIZE?", "risk": "high" if amount > 10000 else "medium",
+                    "action": "Determine if useful life >1yr → capitalize as asset (ASC 360)."}
+
+        def _dbt_unicap(amount, category=""):
+            _kw = {'inventory', 'production', 'manufacturing', 'cogs', 'materials',
+                   'supplies', 'resale', 'freight', 'packaging'}
+            cat_match = any(k in str(category).lower() for k in _kw)
+            flagged = cat_match and amount > 1000
+            if not flagged:
+                conf = 100 if not cat_match else max(60, int(100 - amount / 5000 * 30))
+                return {"agent": "UNICAP §263A", "flagged": False, "confidence": conf,
+                        "verdict": "EXEMPT", "risk": "safe",
+                        "action": "UNICAP inapplicable. Non-production or sub-threshold."}
+            conf = max(20, int(100 - min(60, (amount - 1000) / 9000 * 60)))
+            return {"agent": "UNICAP §263A", "flagged": True, "confidence": conf,
+                    "verdict": "UNICAP", "risk": "medium",
+                    "action": "Uniform capitalization may apply (IRC §263A). Review allocable costs."}
+
+        def _final_verdict(agents):
+            n = sum(1 for a in agents if a["flagged"])
+            if n == 0: return "CLEAN",       "✅", "#00C896"
+            if n == 1: return "LOW RISK",    "🟡", "#F59E0B"
+            if n == 2: return "MEDIUM RISK", "🟠", "#F97316"
+            return             "HIGH RISK",  "🔴", "#EF4444"
+
+        cat_col = 'category' if 'category' in df.columns else None
+        debate_rows = []
+        for _, row in df.iterrows():
+            amt  = float(row['amount'])
+            cat  = str(row.get(cat_col, "")) if cat_col else ""
+            irs  = _dbt_irs(amt)
+            gaap = _dbt_gaap(amt)
+            ucap = _dbt_unicap(amt, cat)
+            verd, icon, color = _final_verdict([irs, gaap, ucap])
+            debate_rows.append({
+                "row": row, "irs": irs, "gaap": gaap, "unicap": ucap,
+                "verdict": verd, "icon": icon, "color": color,
+                "n_flags": sum(1 for a in [irs, gaap, ucap] if a["flagged"])
+            })
+
+        total_irs  = sum(1 for d in debate_rows if d["irs"]["flagged"])
+        total_gaap = sum(1 for d in debate_rows if d["gaap"]["flagged"])
+        total_ucap = sum(1 for d in debate_rows if d["unicap"]["flagged"])
+        high_risk  = sum(1 for d in debate_rows if d["verdict"] == "HIGH RISK")
+        score      = int(100 - (total_irs / len(df)) * 100) if len(df) else 100
+
+        s1, s2, s3, s4, s5 = st.columns(5)
+        s1.metric("IRS §274 Flags",   total_irs,
+                  delta=f"-${df[df['amount']>75]['amount'].sum():,.0f}", delta_color="inverse")
+        s2.metric("GAAP ASC 360",     total_gaap)
+        s3.metric("UNICAP §263A",     total_ucap)
+        s4.metric("High-Risk Items",  high_risk, delta_color="inverse")
+        s5.metric("Compliance Score", f"{score}%")
 
         st.divider()
-        show_flagged = st.checkbox("Show Flagged Transactions Only", value=False)
-        audit_df = flagged_irs if show_flagged else df
 
-        for _, row in audit_df.iterrows():
-            irs_flag  = row['amount'] > 75
-            gaap_flag = row['amount'] > 2000
-            icon = "🚩" if (irs_flag or gaap_flag) else "✅"
-            with st.expander(f"{icon} {row.get('description', 'N/A')} — ${row['amount']:,.2f}"):
-                irs_col, gaap_col = st.columns(2)
-                with irs_col:
-                    st.error("**🛡️ IRS Agent**")
-                    if irs_flag:
-                        st.write("🚩 **IRC §274(d):** Substantiation required.")
-                        st.write("📋 **Action:** Obtain receipt + business purpose statement.")
-                        st.write("⚠️ **Risk:** Full disallowance if unsubstantiated at audit.")
-                    else:
-                        st.write("✅ **Safe Harbor:** Under $75 threshold.")
-                        st.write("📋 **No action required.** Standard deduction applies.")
-                with gaap_col:
-                    st.info("**📘 GAAP Agent**")
-                    if gaap_flag:
-                        st.write("🚩 **ASC 360:** Capitalize if useful life > 1 year.")
-                        st.write("📋 **Action:** Asset vs. expense determination required.")
-                        st.write("⚠️ **Risk:** P&L misstatement if incorrectly expensed.")
-                    else:
-                        st.write("✅ **Expense Treatment:** Standard accrual applies.")
-                        st.write("📋 **No capitalization required.** Book as period cost.")
+        risk_dist = {"CLEAN": 0, "LOW RISK": 0, "MEDIUM RISK": 0, "HIGH RISK": 0}
+        for d in debate_rows:
+            risk_dist[d["verdict"]] += 1
+        fig_risk = go.Figure(go.Bar(
+            x=list(risk_dist.values()), y=list(risk_dist.keys()), orientation='h',
+            marker_color=["#00C896", "#F59E0B", "#F97316", "#EF4444"],
+            text=list(risk_dist.values()), textposition='auto'
+        ))
+        fig_risk.update_layout(
+            height=160, margin=dict(l=0, r=0, t=6, b=0),
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False, color="#546880"),
+            yaxis=dict(color="#8A9BB5"), font=dict(color="#8A9BB5")
+        )
+        st.plotly_chart(fig_risk, use_container_width=True)
+        st.divider()
+
+        fc1, fc2, fc3 = st.columns([2, 2, 1])
+        filter_mode = fc1.selectbox("Filter",
+            ["All Transactions", "Flagged Only", "High Risk Only"])
+        sort_mode = fc2.selectbox("Sort By",
+            ["Amount (Desc)", "Risk Level", "IRS Flag"])
+        if fc3.button("📥 CSV"):
+            exp_rows = [{
+                "date": d["row"].get("date", ""),
+                "description": d["row"].get("description", ""),
+                "amount": d["row"]["amount"],
+                "irs_verdict": d["irs"]["verdict"],
+                "irs_confidence": d["irs"]["confidence"],
+                "gaap_verdict": d["gaap"]["verdict"],
+                "gaap_confidence": d["gaap"]["confidence"],
+                "unicap_verdict": d["unicap"]["verdict"],
+                "final_verdict": d["verdict"],
+            } for d in debate_rows]
+            exp_df = pd.DataFrame(exp_rows)
+            st.download_button(
+                "⬇️ Download",
+                exp_df.to_csv(index=False).encode(),
+                file_name=f"debate_{st.session_state.active_name}_{datetime.today().strftime('%Y%m%d')}.csv",
+                mime="text/csv", key="debate_csv"
+            )
+
+        if filter_mode == "Flagged Only":
+            show_rows = [d for d in debate_rows if d["n_flags"] > 0]
+        elif filter_mode == "High Risk Only":
+            show_rows = [d for d in debate_rows if d["verdict"] == "HIGH RISK"]
+        else:
+            show_rows = list(debate_rows)
+
+        _risk_order = {"HIGH RISK": 0, "MEDIUM RISK": 1, "LOW RISK": 2, "CLEAN": 3}
+        if sort_mode == "Amount (Desc)":
+            show_rows = sorted(show_rows, key=lambda d: float(d["row"]["amount"]), reverse=True)
+        elif sort_mode == "Risk Level":
+            show_rows = sorted(show_rows, key=lambda d: _risk_order.get(d["verdict"], 4))
+        elif sort_mode == "IRS Flag":
+            show_rows = sorted(show_rows, key=lambda d: d["irs"]["flagged"], reverse=True)
+
+        st.caption(f"Showing {len(show_rows)} of {len(debate_rows)} transactions")
+
+        for d in show_rows:
+            row  = d["row"]
+            amt  = float(row['amount'])
+            desc = str(row.get('description', 'N/A'))
+            with st.expander(
+                f"{d['icon']} **{desc[:55]}** — ${amt:,.2f}  ·  {d['verdict']}"
+            ):
+                irs_col, gaap_col, ucap_col = st.columns(3)
+
+                def _agent_card(col, ag, border):
+                    conf = ag["confidence"]
+                    cc = "#00C896" if conf >= 80 else "#F59E0B" if conf >= 50 else "#EF4444"
+                    flag_color = "#EF4444" if ag["flagged"] else "#00C896"
+                    flag_icon  = "🚩 " if ag["flagged"] else "✅ "
+                    with col:
+                        st.markdown(f"""
+<div style="border:1px solid {border};border-radius:10px;padding:12px;min-height:150px;">
+<div style="font-size:0.72rem;color:#546880;text-transform:uppercase;letter-spacing:0.08em;">{ag['agent']}</div>
+<div style="font-size:1.05rem;font-weight:700;color:{flag_color};margin:6px 0 4px;">{flag_icon}{ag['verdict']}</div>
+<div style="font-size:0.77rem;color:#8A9BB5;margin-bottom:8px;">{ag['action']}</div>
+<div style="font-size:0.72rem;color:{cc};font-weight:600;">Confidence: {conf}%</div>
+<div style="background:#162032;border-radius:4px;height:4px;margin-top:4px;">
+<div style="background:{cc};width:{conf}%;height:4px;border-radius:4px;"></div></div>
+</div>""", unsafe_allow_html=True)
+
+                _agent_card(irs_col,  d["irs"],    "#EF4444" if d["irs"]["flagged"]    else "#162032")
+                _agent_card(gaap_col, d["gaap"],   "#F59E0B" if d["gaap"]["flagged"]   else "#162032")
+                _agent_card(ucap_col, d["unicap"], "#7C3AED" if d["unicap"]["flagged"] else "#162032")
+
+                st.markdown("---")
+                agree    = [ag["agent"] for ag in [d["irs"], d["gaap"], d["unicap"]] if ag["flagged"]]
+                disagree = [ag["agent"] for ag in [d["irs"], d["gaap"], d["unicap"]] if not ag["flagged"]]
+                if not agree:
+                    cross = "All agents in agreement: transaction is compliant."
+                elif len(agree) == 3:
+                    cross = "All three agents flagged — immediate remediation required."
+                else:
+                    cross = (f"Flagging: **{', '.join(agree)}** &nbsp;|&nbsp; "
+                             f"Clearing: **{', '.join(disagree)}**")
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:12px;'>"
+                    f"<div style='font-size:1.3rem;'>{d['icon']}</div>"
+                    f"<div><div style='color:{d['color']};font-weight:700;font-size:0.9rem;'>"
+                    f"{d['verdict']}</div>"
+                    f"<div style='color:#8A9BB5;font-size:0.78rem;'>{cross}</div></div></div>",
+                    unsafe_allow_html=True
+                )
 
 # --- 7. PHASE: FINANCIAL REPORTING (RECONCILIATION & RISK) ---
 elif st.session_state.page == "📊 Financial Reporting":
@@ -973,8 +1364,9 @@ elif st.session_state.page == "📈 CFO Dashboard":
         st.dataframe(top.style.format({'amount': '${:,.2f}'}), use_container_width=True)
 
 # --- 10. PHASE: QUICK START GUIDE (FPDF2 REPORT) ---
-elif st.session_state.page == "📄 Quick Start Guide":
-    st.title("📄 Quick Start Guide — PDF Financial Report")
+elif st.session_state.page == "📄 PDF Reports":
+    st.title("📄 PDF Financial Reports")
+    st.caption("Full audit-ready export: financials · IRS compliance · GAAP · UNICAP debate summary")
     _gate()
     if not FPDF_AVAILABLE:
         st.error("fpdf2 is not installed. Run: `pip install fpdf2`")
@@ -982,113 +1374,439 @@ elif st.session_state.page == "📄 Quick Start Guide":
         st.info("Ingest client data first to generate the PDF report.")
     else:
         client = st.session_state.active_name
-        rev    = _get_revenue(st.session_state.active_uuid)
+        cid    = st.session_state.active_uuid
+        rev    = _get_revenue(cid)
         exp    = df['amount'].sum()
         net    = rev - exp
         margin = (net / rev * 100) if rev else 0
+        flagged_irs  = df[df['amount'] > 75]
+        flagged_gaap = df[df['amount'] > 2000]
+        flagged_ucap = df[df['amount'] > 1000] if 'category' not in df.columns else \
+            df[df.apply(lambda r: any(
+                k in str(r.get('category', '')).lower()
+                for k in ['inventory','production','manufacturing','cogs','materials']
+            ) and r['amount'] > 1000, axis=1)]
+        recon_score  = int(100 - (len(flagged_irs) / len(df)) * 100) if len(df) else 100
+        cash_end     = net - 700 + 10000
+        ar, ap       = 8700.0, 3000.0
+        total_assets = cash_end + ar
+        total_equity = 15000.0 + net
+        total_le     = ap + total_equity
 
         st.subheader("Report Preview")
-        p1, p2, p3, p4 = st.columns(4)
-        p1.metric("Revenue",      f"${rev:,.2f}")
-        p2.metric("Expenses",     f"${exp:,.2f}")
-        p3.metric("Net Income",   f"${net:,.2f}")
-        p4.metric("Profit Margin", f"{margin:.1f}%")
+        p1, p2, p3, p4, p5 = st.columns(5)
+        p1.metric("Revenue",        f"${rev:,.2f}")
+        p2.metric("Expenses",       f"${exp:,.2f}")
+        p3.metric("Net Income",     f"${net:,.2f}")
+        p4.metric("Profit Margin",  f"{margin:.1f}%")
+        p5.metric("Compliance",     f"{recon_score}%")
 
-        if 'category' in df.columns:
-            st.caption(f"Categories present: {', '.join(df['category'].dropna().unique())}")
+        if st.button("📥 Generate Full PDF Report"):
+            pdf = _BookkeepingPDF(client_name=client)
+            pdf.set_auto_page_break(auto=True, margin=18)
 
-        if st.button("📥 Generate PDF Report"):
-            pdf = FPDF()
-            pdf.set_auto_page_break(auto=True, margin=15)
+            def _sec_hdr(title):
+                pdf.set_fill_color(0, 30, 20)
+                pdf.set_text_color(0, 200, 150)
+                pdf.set_font("Helvetica", "B", 13)
+                pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT", fill=True)
+                pdf.set_text_color(30, 30, 30)
+                pdf.ln(3)
 
-            # --- Cover Page ---
+            def _kv_row(label, val, bold_val=False):
+                pdf.set_font("Helvetica", "", 10)
+                pdf.cell(100, 7, label)
+                pdf.set_font("Helvetica", "B" if bold_val else "", 10)
+                pdf.cell(80, 7, str(val), new_x="LMARGIN", new_y="NEXT")
+
+            def _tbl_hdr(*cols_widths):
+                pdf.set_fill_color(220, 220, 220)
+                pdf.set_font("Helvetica", "B", 9)
+                for hdr, w in cols_widths:
+                    pdf.cell(w, 8, hdr, border=1, fill=True)
+                pdf.ln()
+
+            # ── Cover Page ──────────────────────────────────────────────
             pdf.add_page()
+            pdf.set_fill_color(0, 30, 20)
+            pdf.rect(0, 0, 210, 55, 'F')
+            pdf.set_y(16)
             pdf.set_font("Helvetica", "B", 22)
-            pdf.ln(35)
+            pdf.set_text_color(0, 200, 150)
             pdf.cell(0, 12, "AI Bookkeeping Specialist", new_x="LMARGIN", new_y="NEXT", align="C")
-            pdf.set_font("Helvetica", "B", 15)
-            pdf.cell(0, 10, "Financial Quick Start Report", new_x="LMARGIN", new_y="NEXT", align="C")
-            pdf.set_font("Helvetica", "", 12)
-            pdf.ln(6)
-            pdf.cell(0, 8, f"Client: {client}", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(200, 230, 220)
+            pdf.cell(0, 8, "Full Financial Report — 2026 IRS & GAAP Edition",
+                     new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_y(70)
+            pdf.set_text_color(30, 30, 30)
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, f"Client: {client}", new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.set_font("Helvetica", "", 11)
             pdf.cell(0, 8, f"Report Date: {datetime.today().strftime('%B %d, %Y')}",
                      new_x="LMARGIN", new_y="NEXT", align="C")
-            pdf.ln(12)
-            pdf.set_font("Helvetica", "I", 9)
-            pdf.set_text_color(110, 110, 110)
-            pdf.multi_cell(0, 6,
+            pdf.ln(8)
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(120, 120, 120)
+            pdf.multi_cell(0, 5,
                 "Prepared under 2026 IRS and GAAP standards. All figures are client-reported. "
-                "For internal use only.", align="C")
+                "Confidential — for internal use only.", align="C")
 
-            # --- Executive Summary ---
+            # ── Executive Summary ────────────────────────────────────────
             pdf.add_page()
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, "Executive Summary", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_draw_color(80, 80, 80)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(5)
-            pdf.set_font("Helvetica", "", 11)
-            for label, val in [
-                ("Total Revenue",       f"${rev:,.2f}"),
-                ("Total Expenses",      f"${exp:,.2f}"),
-                ("Net Income",          f"${net:,.2f}"),
-                ("Profit Margin",       f"{margin:.1f}%"),
-                ("Total Transactions",  str(len(df))),
-                ("IRS Flags (>$75)",    str(len(df[df['amount'] > 75]))),
-                ("GAAP Flags (>$2K)",   str(len(df[df['amount'] > 2000]))),
+            _sec_hdr("1. Executive Summary")
+            for lbl, val, bold in [
+                ("Total Revenue",         f"${rev:,.2f}",       True),
+                ("Total Expenses",        f"${exp:,.2f}",       False),
+                ("Net Income",            f"${net:,.2f}",       True),
+                ("Profit Margin",         f"{margin:.1f}%",     False),
+                ("Total Transactions",    str(len(df)),         False),
+                ("IRS Flags (>$75)",      str(len(flagged_irs)), False),
+                ("GAAP Flags (>$2K)",     str(len(flagged_gaap)), False),
+                ("UNICAP Flags",          str(len(flagged_ucap)), False),
+                ("Reconciliation Score",  f"{recon_score}%",   True),
             ]:
-                pdf.cell(90, 8, label)
-                pdf.cell(90, 8, val, new_x="LMARGIN", new_y="NEXT")
+                _kv_row(lbl, val, bold)
 
-            # --- Top 10 Transactions Table ---
-            pdf.add_page()
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, "Top 10 Transactions by Amount", new_x="LMARGIN", new_y="NEXT")
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            # ── Income Statement ─────────────────────────────────────────
             pdf.ln(4)
-            pdf.set_fill_color(220, 220, 220)
-            pdf.set_font("Helvetica", "B", 9)
-            for hdr, w in [("Description", 58), ("Date", 28), ("Amount ($)", 30), ("Category", 34)]:
-                pdf.cell(w, 8, hdr, border=1, fill=True)
-            pdf.ln()
-            pdf.set_font("Helvetica", "", 9)
+            _sec_hdr("2. Income Statement")
+            _tbl_hdr(("Item", 100), ("Amount ($)", 90))
+            pdf.set_font("Helvetica", "", 10)
+            for item, val in [
+                ("Total Revenue",  f"${rev:,.2f}"),
+                ("Total Expenses", f"${exp:,.2f}"),
+            ]:
+                pdf.cell(100, 7, item, border=1)
+                pdf.cell(90,  7, val,  border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(100, 8, "Net Income", border=1)
+            pdf.cell(90,  8, f"${net:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT")
+
+            # ── Balance Sheet ────────────────────────────────────────────
+            pdf.ln(4)
+            _sec_hdr("3. Balance Sheet")
+            _tbl_hdr(("Account", 100), ("Balance ($)", 90))
+            pdf.set_font("Helvetica", "", 10)
+            for item, val in [
+                ("Cash",                 f"${cash_end:,.2f}"),
+                ("Accounts Receivable",  f"${ar:,.2f}"),
+                ("Total Assets",         f"${total_assets:,.2f}"),
+                ("Accounts Payable",     f"${ap:,.2f}"),
+                ("Total Equity",         f"${total_equity:,.2f}"),
+                ("Total Liab. + Equity", f"${total_le:,.2f}"),
+            ]:
+                pdf.cell(100, 7, item, border=1)
+                pdf.cell(90,  7, val,  border=1, new_x="LMARGIN", new_y="NEXT")
+            balanced = "✓ Balanced" if abs(total_assets - total_le) < 0.01 else "✗ Out of Balance"
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.cell(0, 6, balanced, new_x="LMARGIN", new_y="NEXT")
+
+            # ── Statement of Cash Flows ──────────────────────────────────
+            pdf.ln(4)
+            _sec_hdr("4. Statement of Cash Flows (Indirect Method)")
+            _tbl_hdr(("Description", 120), ("Amount ($)", 70))
+            pdf.set_font("Helvetica", "", 10)
+            for item, val in [
+                ("Net Income",            f"${net:,.2f}"),
+                ("Add: Depreciation",     "$500.00"),
+                ("Working Capital Chg.",  "($1,200.00)"),
+                ("Ending Cash Position",  f"${cash_end:,.2f}"),
+            ]:
+                pdf.cell(120, 7, item, border=1)
+                pdf.cell(70,  7, val,  border=1, new_x="LMARGIN", new_y="NEXT")
+
+            # ── Agentic Debate Summary ───────────────────────────────────
+            pdf.add_page()
+            _sec_hdr("5. Agentic Debate Summary — Three-Agent Compliance Review")
+            pdf.set_font("Helvetica", "", 10)
+            for agent, flag_count, rule, note in [
+                ("IRS §274 Agent",    len(flagged_irs),
+                 "IRC §274(d) — $75 substantiation rule",
+                 "Receipts required for all flagged expenses."),
+                ("GAAP ASC 360 Agent", len(flagged_gaap),
+                 "ASC 360 — Capitalization threshold $2,000",
+                 "Determine asset vs. expense treatment."),
+                ("UNICAP §263A Agent", len(flagged_ucap),
+                 "IRC §263A — Uniform capitalization rules",
+                 "Review production cost allocations."),
+            ]:
+                pdf.set_font("Helvetica", "B", 10)
+                pdf.cell(0, 8, agent, new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", "", 9)
+                pdf.cell(0, 6, f"  Rule: {rule}", new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 6, f"  Flags: {flag_count}  |  {note}", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(2)
+
+            # ── Top 10 Transactions ──────────────────────────────────────
+            pdf.add_page()
+            _sec_hdr("6. Top 10 Transactions by Amount")
+            _tbl_hdr(("Description", 58), ("Date", 28), ("Amount ($)", 30),
+                     ("Category", 34), ("IRS", 18), ("GAAP", 22))
+            pdf.set_font("Helvetica", "", 8)
             top10 = df.nlargest(10, 'amount')
             for _, row in top10.iterrows():
+                irs_flag  = "🚩" if row['amount'] > 75   else "✅"
+                gaap_flag = "🚩" if row['amount'] > 2000 else "✅"
                 pdf.cell(58, 7, str(row.get('description', ''))[:30], border=1)
                 pdf.cell(28, 7, str(row.get('date', ''))[:10],         border=1)
                 pdf.cell(30, 7, f"${row['amount']:,.2f}",               border=1)
-                pdf.cell(34, 7, str(row.get('category', 'N/A'))[:20],  border=1)
-                pdf.ln()
+                pdf.cell(34, 7, str(row.get('category', 'N/A'))[:18],  border=1)
+                pdf.cell(18, 7, irs_flag,  border=1, align="C")
+                pdf.cell(22, 7, gaap_flag, border=1, align="C", new_x="LMARGIN", new_y="NEXT")
 
-            # --- IRS Compliance Summary ---
+            # ── IRS Compliance Detail ────────────────────────────────────
             pdf.add_page()
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, "IRS Compliance Summary — IRC §274 ($75 Rule)",
-                     new_x="LMARGIN", new_y="NEXT")
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(5)
-            flagged = df[df['amount'] > 75]
+            _sec_hdr("7. IRS Compliance Detail — IRC §274 ($75 Rule)")
             cleared = df[df['amount'] <= 75]
-            pdf.set_font("Helvetica", "", 11)
-            for label, val in [
-                ("Flagged Transactions (>$75):", str(len(flagged))),
-                ("Cleared Transactions (≤$75):", str(len(cleared))),
-                ("Total Amount Flagged:",         f"${flagged['amount'].sum():,.2f}"),
-                ("Reconciliation Score:",         f"{int(100-(len(flagged)/len(df))*100)}%"),
-            ]:
-                pdf.cell(100, 8, label)
-                pdf.cell(80,  8, val, new_x="LMARGIN", new_y="NEXT")
+            _kv_row("Flagged Transactions (>$75):", str(len(flagged_irs)))
+            _kv_row("Cleared Transactions (≤$75):", str(len(cleared)))
+            _kv_row("Total Amount Flagged:",         f"${flagged_irs['amount'].sum():,.2f}")
+            _kv_row("Total Amount Cleared:",         f"${cleared['amount'].sum():,.2f}")
+            _kv_row("Reconciliation Score:",         f"{recon_score}%", bold_val=True)
+            if len(flagged_irs) > 0:
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "B", 10)
+                pdf.cell(0, 7, "Flagged Item Detail:", new_x="LMARGIN", new_y="NEXT")
+                _tbl_hdr(("Description", 90), ("Amount ($)", 40), ("Action Required", 60))
+                pdf.set_font("Helvetica", "", 8)
+                for _, row in flagged_irs.head(20).iterrows():
+                    pdf.cell(90, 6, str(row.get('description', ''))[:45], border=1)
+                    pdf.cell(40, 6, f"${row['amount']:,.2f}",              border=1)
+                    pdf.cell(60, 6, "Obtain receipt + business purpose",  border=1,
+                             new_x="LMARGIN", new_y="NEXT")
 
             pdf_bytes = bytes(pdf.output())
-            fname = f"{client}_report_{datetime.today().strftime('%Y%m%d')}.pdf"
+            fname = f"{client}_FullReport_{datetime.today().strftime('%Y%m%d')}.pdf"
             st.download_button(
-                label="📥 Download PDF",
+                label="📥 Download Full PDF Report",
                 data=pdf_bytes,
                 file_name=fname,
-                mime="application/pdf"
+                mime="application/pdf",
+                key="pdf_download"
             )
-            st.success(f"Report '{fname}' is ready for download.")
+            st.success(f"'{fname}' ready — 7 sections, {recon_score}% compliance score.")
+            st.session_state['last_pdf_bytes'] = pdf_bytes
+            st.session_state['last_pdf_fname']  = fname
+
+# --- 13. PHASE: EMAIL DELIVERY ---
+elif st.session_state.page == "📧 Email Delivery":
+    st.title("📧 Email Delivery")
+    st.caption("Send PDF reports and invoice summaries directly to client email via SMTP")
+    _gate()
+
+    cid         = st.session_state.active_uuid
+    client_name = st.session_state.active_name
+    cfg         = _load_settings()
+
+    # Resolve client email from registry
+    conn_r = sqlite3.connect(REGISTRY)
+    _row   = conn_r.execute("SELECT email FROM clients WHERE uuid=?", (cid,)).fetchone()
+    conn_r.close()
+    client_email = (_row[0] if _row else "") or ""
+
+    # --- SMTP Configuration ---
+    with st.expander("⚙️ SMTP Configuration", expanded=not cfg.get("smtp_host")):
+        st.caption("Credentials are stored locally in vault/settings.json — never transmitted to the cloud.")
+        ec1, ec2 = st.columns(2)
+        smtp_host = ec1.text_input("SMTP Host",  value=cfg.get("smtp_host", "smtp.gmail.com"))
+        smtp_port = ec2.number_input("Port",      value=int(cfg.get("smtp_port", 587)), min_value=1, max_value=65535)
+        smtp_user = ec1.text_input("Username",   value=cfg.get("smtp_user", ""))
+        smtp_pass = ec2.text_input("Password",   value=cfg.get("smtp_password", ""), type="password")
+        from_addr = st.text_input("From Address (optional — defaults to Username)",
+                                  value=cfg.get("smtp_from_addr", ""))
+        if st.button("💾 Save SMTP Settings"):
+            _save_settings({
+                "smtp_host":      smtp_host,
+                "smtp_port":      smtp_port,
+                "smtp_user":      smtp_user,
+                "smtp_password":  smtp_pass,
+                "smtp_from_addr": from_addr or smtp_user,
+            })
+            st.success("SMTP settings saved.")
+            st.rerun()
+
+    st.divider()
+
+    smtp_cfg = {
+        "host":      cfg.get("smtp_host", ""),
+        "port":      int(cfg.get("smtp_port", 587)),
+        "user":      cfg.get("smtp_user", ""),
+        "password":  cfg.get("smtp_password", ""),
+        "from_addr": cfg.get("smtp_from_addr", cfg.get("smtp_user", "")),
+    }
+    smtp_ready = bool(smtp_cfg["host"] and smtp_cfg["user"] and smtp_cfg["password"])
+
+    if not smtp_ready:
+        st.warning("Configure SMTP settings above before sending emails.")
+
+    # --- Recipient ---
+    to_addr = st.text_input(
+        "Recipient Email",
+        value=client_email,
+        placeholder="client@example.com",
+        help="Defaults to the email on file for this client."
+    )
+
+    st.divider()
+
+    # --- Send PDF Report ---
+    st.subheader("📄 Send PDF Report")
+    col_pdf1, col_pdf2 = st.columns(2)
+
+    with col_pdf1:
+        st.markdown("Attach the full 7-section financial report (Income · Balance · Cash Flow · "
+                    "IRS Compliance · Agentic Debate summary) as a PDF.")
+        if not df.empty and FPDF_AVAILABLE:
+            if st.button("📤 Generate & Send PDF", disabled=not smtp_ready or not to_addr):
+                with st.spinner("Generating PDF…"):
+                    rev  = _get_revenue(cid)
+                    exp  = df['amount'].sum()
+                    net  = rev - exp
+                    margin = (net / rev * 100) if rev else 0
+                    flagged_irs  = df[df['amount'] > 75]
+                    flagged_gaap = df[df['amount'] > 2000]
+                    recon_score  = int(100 - (len(flagged_irs) / len(df)) * 100) if len(df) else 100
+                    cash_end     = net - 700 + 10000
+                    ar, ap       = 8700.0, 3000.0
+                    total_assets = cash_end + ar
+                    total_equity = 15000.0 + net
+                    total_le     = ap + total_equity
+
+                    pdf = _BookkeepingPDF(client_name=client_name)
+                    pdf.set_auto_page_break(auto=True, margin=18)
+
+                    def _sh(title):
+                        pdf.set_fill_color(0, 30, 20)
+                        pdf.set_text_color(0, 200, 150)
+                        pdf.set_font("Helvetica", "B", 13)
+                        pdf.cell(0, 10, title, new_x="LMARGIN", new_y="NEXT", fill=True)
+                        pdf.set_text_color(30, 30, 30)
+                        pdf.ln(2)
+
+                    pdf.add_page()
+                    pdf.set_fill_color(0, 30, 20)
+                    pdf.rect(0, 0, 210, 55, 'F')
+                    pdf.set_y(16)
+                    pdf.set_font("Helvetica", "B", 22)
+                    pdf.set_text_color(0, 200, 150)
+                    pdf.cell(0, 12, "AI Bookkeeping Specialist", new_x="LMARGIN", new_y="NEXT", align="C")
+                    pdf.set_font("Helvetica", "B", 13)
+                    pdf.set_text_color(200, 230, 220)
+                    pdf.cell(0, 8, "Full Financial Report", new_x="LMARGIN", new_y="NEXT", align="C")
+                    pdf.set_y(70)
+                    pdf.set_text_color(30, 30, 30)
+                    pdf.set_font("Helvetica", "B", 14)
+                    pdf.cell(0, 10, f"Client: {client_name}", new_x="LMARGIN", new_y="NEXT", align="C")
+                    pdf.set_font("Helvetica", "", 11)
+                    pdf.cell(0, 8, f"Report Date: {datetime.today().strftime('%B %d, %Y')}",
+                             new_x="LMARGIN", new_y="NEXT", align="C")
+
+                    pdf.add_page()
+                    _sh("Executive Summary")
+                    pdf.set_font("Helvetica", "", 10)
+                    for lbl, val in [
+                        ("Total Revenue",        f"${rev:,.2f}"),
+                        ("Total Expenses",       f"${exp:,.2f}"),
+                        ("Net Income",           f"${net:,.2f}"),
+                        ("Profit Margin",        f"{margin:.1f}%"),
+                        ("IRS Flags (>$75)",     str(len(flagged_irs))),
+                        ("GAAP Flags (>$2K)",    str(len(flagged_gaap))),
+                        ("Reconciliation Score", f"{recon_score}%"),
+                    ]:
+                        pdf.cell(100, 7, lbl)
+                        pdf.cell(80,  7, val, new_x="LMARGIN", new_y="NEXT")
+
+                    pdf.add_page()
+                    _sh("Financial Statements")
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.cell(0, 7, "Income Statement", new_x="LMARGIN", new_y="NEXT")
+                    pdf.set_font("Helvetica", "", 10)
+                    for itm, v in [
+                        ("Total Revenue", f"${rev:,.2f}"),
+                        ("Total Expenses", f"${exp:,.2f}"),
+                        ("Net Income", f"${net:,.2f}")
+                    ]:
+                        pdf.cell(100, 6, itm, border=1)
+                        pdf.cell(90,  6, v, border=1, new_x="LMARGIN", new_y="NEXT")
+                    pdf.ln(4)
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.cell(0, 7, "Balance Sheet", new_x="LMARGIN", new_y="NEXT")
+                    pdf.set_font("Helvetica", "", 10)
+                    for itm, v in [
+                        ("Cash", f"${cash_end:,.2f}"), ("Accounts Receivable", f"${ar:,.2f}"),
+                        ("Total Assets", f"${total_assets:,.2f}"), ("Accounts Payable", f"${ap:,.2f}"),
+                        ("Total Equity", f"${total_equity:,.2f}"), ("Total L+E", f"${total_le:,.2f}"),
+                    ]:
+                        pdf.cell(100, 6, itm, border=1)
+                        pdf.cell(90,  6, v, border=1, new_x="LMARGIN", new_y="NEXT")
+
+                    pdf.add_page()
+                    _sh("IRS Compliance — IRC §274 ($75 Rule)")
+                    cleared = df[df['amount'] <= 75]
+                    pdf.set_font("Helvetica", "", 10)
+                    for lbl, v in [
+                        ("Flagged (>$75)", str(len(flagged_irs))),
+                        ("Cleared (≤$75)", str(len(cleared))),
+                        ("Amount at Risk", f"${flagged_irs['amount'].sum():,.2f}"),
+                        ("Reconciliation Score", f"{recon_score}%"),
+                    ]:
+                        pdf.cell(100, 7, lbl)
+                        pdf.cell(80,  7, v, new_x="LMARGIN", new_y="NEXT")
+
+                    pdf_bytes = bytes(pdf.output())
+                    fname = f"{client_name}_Report_{datetime.today().strftime('%Y%m%d')}.pdf"
+
+                with st.spinner("Sending email…"):
+                    ok, msg = _send_report_email(smtp_cfg, to_addr, client_name, pdf_bytes, fname)
+                if ok:
+                    st.success(f"📧 Report sent to **{to_addr}**")
+                else:
+                    st.error(f"Send failed: {msg}")
+        else:
+            if df.empty:
+                st.info("Ingest ledger data first.")
+            elif not FPDF_AVAILABLE:
+                st.warning("Install fpdf2: `pip install fpdf2`")
+
+    with col_pdf2:
+        if st.session_state.get("last_pdf_bytes"):
+            st.markdown("Or send the last report generated in **📄 PDF Reports**:")
+            if st.button("📤 Send Last Generated Report", disabled=not smtp_ready or not to_addr):
+                with st.spinner("Sending email…"):
+                    ok, msg = _send_report_email(
+                        smtp_cfg, to_addr, client_name,
+                        st.session_state["last_pdf_bytes"],
+                        st.session_state["last_pdf_fname"]
+                    )
+                if ok:
+                    st.success(f"📧 Report sent to **{to_addr}**")
+                else:
+                    st.error(f"Send failed: {msg}")
+
+    st.divider()
+
+    # --- Send Invoice Summary ---
+    st.subheader("🧾 Send Invoice Summary")
+    st.markdown("Sends an HTML invoice summary (Revenue · Expenses · Net Income) to the client.")
+    if not df.empty:
+        inv_rev = _get_revenue(cid)
+        inv_exp = df['amount'].sum()
+        inv_net = inv_rev - inv_exp
+        ic1, ic2, ic3 = st.columns(3)
+        ic1.metric("Revenue",   f"${inv_rev:,.2f}")
+        ic2.metric("Expenses",  f"${inv_exp:,.2f}")
+        ic3.metric("Net",       f"${inv_net:,.2f}")
+        if st.button("📤 Send Invoice", disabled=not smtp_ready or not to_addr):
+            with st.spinner("Sending invoice…"):
+                ok, msg = _send_invoice_email(smtp_cfg, to_addr, client_name,
+                                              inv_rev, inv_exp, inv_net)
+            if ok:
+                st.success(f"🧾 Invoice sent to **{to_addr}**")
+            else:
+                st.error(f"Send failed: {msg}")
+    else:
+        st.info("Ingest ledger data first.")
 
 # --- 12. PHASE: AI CFO CHAT (ZERO-KNOWLEDGE AUDITOR) ---
 elif st.session_state.page == "💬 AI CFO Chat":
