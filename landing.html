@@ -578,6 +578,97 @@
       font-size: 0.65rem; color: var(--teal);
     }
 
+    /* ─── Waitlist / Contact ─────────────────────────────────── */
+    .waitlist-section {
+      padding: 100px 0; position: relative; z-index: 1;
+    }
+    .waitlist-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 64px; align-items: center; max-width: 960px; margin: 0 auto;
+    }
+    @media (max-width: 780px) { .waitlist-grid { grid-template-columns: 1fr; gap: 40px; } }
+    .waitlist-left h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 900;
+      letter-spacing: -0.025em; color: var(--text); line-height: 1.12;
+      margin-bottom: 16px;
+    }
+    .waitlist-left p { font-size: 0.97rem; color: var(--text3); line-height: 1.7; margin-bottom: 24px; }
+    .waitlist-perks { display: flex; flex-direction: column; gap: 10px; }
+    .waitlist-perk {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.875rem; color: var(--text2);
+    }
+    .waitlist-perk .perk-icon {
+      width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+      background: rgba(0,200,150,0.1); border: 1px solid rgba(0,200,150,0.2);
+      display: flex; align-items: center; justify-content: center; font-size: 0.75rem;
+    }
+
+    /* Form card */
+    .waitlist-form-card {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 22px; padding: 36px 32px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+    }
+    .form-title {
+      font-size: 1.1rem; font-weight: 800; color: var(--text);
+      letter-spacing: -0.01em; margin-bottom: 6px;
+    }
+    .form-sub { font-size: 0.82rem; color: var(--text3); margin-bottom: 24px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block; font-size: 0.76rem; font-weight: 600;
+      color: var(--text3); text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%; background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border2); border-radius: 10px;
+      padding: 11px 14px; font-size: 0.9rem; color: var(--text);
+      font-family: inherit; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input::placeholder,
+    .form-group textarea::placeholder { color: var(--text4); }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(0,200,150,0.12);
+    }
+    .form-group select { appearance: none; cursor: pointer; }
+    .form-group select option { background: #0E1828; color: var(--text2); }
+    .form-group textarea { resize: none; min-height: 80px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-submit {
+      width: 100%; padding: 13px; border-radius: 10px;
+      background: var(--grad); color: #fff;
+      font-size: 0.95rem; font-weight: 700;
+      border: none; cursor: pointer; font-family: inherit;
+      transition: box-shadow 0.2s, transform 0.15s;
+      margin-top: 6px;
+    }
+    .form-submit:hover {
+      box-shadow: 0 0 28px rgba(0,200,150,0.45);
+      transform: translateY(-1px);
+    }
+    .form-note {
+      text-align: center; font-size: 0.72rem; color: var(--text4);
+      margin-top: 12px;
+    }
+    /* Success state */
+    .form-success {
+      display: none; text-align: center; padding: 24px 0;
+    }
+    .form-success .success-icon {
+      font-size: 2.5rem; margin-bottom: 12px;
+    }
+    .form-success h3 { font-size: 1.1rem; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+    .form-success p  { font-size: 0.85rem; color: var(--text3); }
+
     /* ─── CTA section ────────────────────────────────────────── */
     .cta-section {
       padding: 110px 0; text-align: center;
@@ -653,6 +744,7 @@
       <li><a href="#agents">Agents</a></li>
       <li><a href="#reports">Reports</a></li>
       <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#waitlist">Waitlist</a></li>
     </ul>
     <a href="http://localhost:8501" class="btn btn-primary">Launch App →</a>
   </div>
@@ -1107,6 +1199,97 @@
   </div>
 </section>
 
+<!-- ── Waitlist / Contact ─────────────────────────────────────── -->
+<section class="waitlist-section section-alt" id="waitlist">
+  <div class="container">
+    <div class="waitlist-grid">
+
+      <!-- Left: copy -->
+      <div class="waitlist-left reveal">
+        <p class="sec-label" style="text-align:left;margin-bottom:10px;">Early Access</p>
+        <h2>Join the Waitlist.<br/><span class="grad-text">Get Priority Access.</span></h2>
+        <p>Be first to know about new features, compliance updates, and exclusive launch pricing. We onboard new firms in batches — secure your spot now.</p>
+        <div class="waitlist-perks">
+          <div class="waitlist-perk">
+            <div class="perk-icon">🚀</div>
+            Priority onboarding — ahead of the public queue
+          </div>
+          <div class="waitlist-perk">
+            <div class="perk-icon">💰</div>
+            Founding member pricing locked for life
+          </div>
+          <div class="waitlist-perk">
+            <div class="perk-icon">📋</div>
+            Early access to 2026 IRS compliance updates
+          </div>
+          <div class="waitlist-perk">
+            <div class="perk-icon">🤖</div>
+            Direct input on new AI agent features
+          </div>
+          <div class="waitlist-perk">
+            <div class="perk-icon">📧</div>
+            White-glove setup support via email
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: form -->
+      <div class="reveal reveal-d2">
+        <div class="waitlist-form-card">
+          <div id="waitlist-form-wrap">
+            <div class="form-title">Request Early Access</div>
+            <div class="form-sub">Takes 30 seconds. No credit card required.</div>
+            <form id="waitlist-form" onsubmit="submitWaitlist(event)">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>First Name</label>
+                  <input type="text" name="first_name" placeholder="Jane" required />
+                </div>
+                <div class="form-group">
+                  <label>Last Name</label>
+                  <input type="text" name="last_name" placeholder="Smith" required />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Work Email</label>
+                <input type="email" name="email" placeholder="jane@firm.com" required />
+              </div>
+              <div class="form-group">
+                <label>Firm / Company</label>
+                <input type="text" name="company" placeholder="Smith & Associates CPA" />
+              </div>
+              <div class="form-group">
+                <label>Role</label>
+                <select name="role">
+                  <option value="">Select your role…</option>
+                  <option>CPA / Accountant</option>
+                  <option>CFO / Controller</option>
+                  <option>Bookkeeper</option>
+                  <option>Business Owner</option>
+                  <option>Tax Professional</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>How can we help? (optional)</label>
+                <textarea name="message" placeholder="Tell us about your bookkeeping needs…"></textarea>
+              </div>
+              <button type="submit" class="form-submit">🚀 Request Early Access</button>
+              <p class="form-note">🔒 Your info is never shared or sold.</p>
+            </form>
+          </div>
+          <div class="form-success" id="waitlist-success">
+            <div class="success-icon">✅</div>
+            <h3>You're on the list!</h3>
+            <p>We'll reach out to <strong id="success-email"></strong> with next steps. Welcome aboard.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ── CTA ────────────────────────────────────────────────────── -->
 <section class="cta-section">
   <div class="cta-orb"></div>
@@ -1129,12 +1312,37 @@
       <li><a href="#agents">Agents</a></li>
       <li><a href="#reports">Reports</a></li>
       <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#waitlist">Waitlist</a></li>
     </ul>
     <span class="footer-copy">© 2026 AI Bookkeeping Specialist · IRS &amp; GAAP Compliant · 100% Local</span>
   </div>
 </footer>
 
 <script>
+  // Waitlist form
+  function submitWaitlist(e) {
+    e.preventDefault();
+    const form   = document.getElementById('waitlist-form');
+    const email  = form.querySelector('[name="email"]').value;
+    const first  = form.querySelector('[name="first_name"]').value;
+    const last   = form.querySelector('[name="last_name"]').value;
+    const company= form.querySelector('[name="company"]').value;
+    const role   = form.querySelector('[name="role"]').value;
+    const msg    = form.querySelector('[name="message"]').value;
+
+    // mailto fallback — opens default mail client with pre-filled data
+    const subject = encodeURIComponent(`Waitlist Request — ${first} ${last}`);
+    const body = encodeURIComponent(
+      `Name: ${first} ${last}\nEmail: ${email}\nFirm: ${company}\nRole: ${role}\n\n${msg}`
+    );
+    window.location.href = `mailto:moustaphaleye.diop@gmail.com?subject=${subject}&body=${body}`;
+
+    // Show success state
+    document.getElementById('success-email').textContent = email;
+    document.getElementById('waitlist-form-wrap').style.display = 'none';
+    document.getElementById('waitlist-success').style.display   = 'block';
+  }
+
   // Scroll-reveal
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
