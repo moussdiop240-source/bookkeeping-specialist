@@ -1,6 +1,7 @@
 # ============================================================
 # AI Bookkeeping Specialist — Subscription Configuration
-# Edit this file to control trial and licensing behaviour.
+# Copy this file to config.py and fill in your values.
+# NEVER commit config.py to a public repository.
 # ============================================================
 
 # Number of days a new client gets on the free trial.
@@ -18,7 +19,6 @@ HARD_STOP_DATE = None
 # HARD_STOP_DATE = "2026-06-01"
 
 # License key signing secret.
-# IMPORTANT: change this before distributing the software.
-# Use a long random string — e.g. from: python -c "import secrets; print(secrets.token_hex(32))"
+# Generate your own: python -c "import secrets; print(secrets.token_hex(32))"
 # Keep this secret. Anyone who knows it can generate valid keys.
-LICENSE_SECRET = "change-me-run-python-c-import-secrets-print-secrets-token-hex-32"
+LICENSE_SECRET = "replace-with-your-own-secret"

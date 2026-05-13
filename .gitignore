@@ -1,3 +1,6 @@
+# License secret — never commit the real config
+config.py
+
 # Local databases
 *.db
 vault/
