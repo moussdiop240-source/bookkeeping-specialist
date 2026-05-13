@@ -102,6 +102,9 @@ def bullet(pdf, text, indent=4):
     pdf.multi_cell(184 - indent, 5.5, text)
 
 def table_row(pdf, cols, widths, header=False, shade=False):
+    row_h = 6
+    if pdf.get_y() + row_h > pdf.h - pdf.b_margin:
+        pdf.add_page()
     if shade:
         pdf.set_fill_color(245, 248, 252)
     else:
@@ -112,12 +115,13 @@ def table_row(pdf, cols, widths, header=False, shade=False):
         pdf.set_fill_color(8, 13, 24)
     x = pdf.get_x()
     y = pdf.get_y()
-    max_h = 6
+    pdf.set_auto_page_break(False)
     for col, w in zip(cols, widths):
         pdf.set_xy(x, y)
-        pdf.cell(w, max_h, col, border=1, fill=True)
+        pdf.cell(w, row_h, col, border=1, fill=True)
         x += w
-    pdf.ln(max_h)
+    pdf.set_auto_page_break(True, margin=16)
+    pdf.ln(row_h)
 
 def divider(pdf):
     pdf.set_draw_color(220, 228, 235)
