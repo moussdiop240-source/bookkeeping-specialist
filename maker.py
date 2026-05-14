@@ -381,13 +381,19 @@ if FPDF_AVAILABLE:
             super().__init__()
             self._client = client_name
 
+        def normalize_text(self, text: str) -> str:
+            """Replace any non-Latin-1 character silently instead of raising."""
+            if not self.is_ttf_font and self.core_fonts_encoding:
+                return text.encode(self.core_fonts_encoding, errors="replace").decode("latin-1")
+            return text
+
         def footer(self):
             self.set_y(-12)
             self.set_font("Helvetica", "I", 7)
             self.set_text_color(150, 150, 150)
             self.cell(
                 0, 5,
-                f"AI Bookkeeping Specialist  -  {self._client.encode('latin-1', errors='replace').decode('latin-1')}  -  Page {self.page_no()}",
+                f"AI Bookkeeping Specialist  -  {self._client}  -  Page {self.page_no()}",
                 align="C"
             )
 
