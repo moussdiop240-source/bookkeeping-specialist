@@ -788,6 +788,66 @@ def _restore_vault_zip(zip_bytes: bytes) -> tuple[int, list[str]]:
         errors.append(str(e))
     return restored, errors
 
+# --- DEBATE LOG ENGINE ---
+def _init_debate_log(cid: str):
+    conn = sqlite3.connect(get_ledger_path(cid))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS debate_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_at       TEXT NOT NULL,
+            tx_date      TEXT,
+            description  TEXT,
+            amount       REAL,
+            irs_verdict  TEXT,
+            gaap_verdict TEXT,
+            unicap_verdict TEXT,
+            final_verdict  TEXT,
+            n_flags        INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def _log_debate_run(cid: str, debate_rows: list):
+    """Persist a full debate run (all rows) to debate_log table."""
+    _init_debate_log(cid)
+    run_at = datetime.today().isoformat()
+    conn   = sqlite3.connect(get_ledger_path(cid))
+    conn.execute("DELETE FROM debate_log")          # replace prior run
+    conn.executemany(
+        "INSERT INTO debate_log "
+        "(run_at, tx_date, description, amount, irs_verdict, "
+        " gaap_verdict, unicap_verdict, final_verdict, n_flags) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        [
+            (
+                run_at,
+                str(d["row"].get("date", "")),
+                str(d["row"].get("description", "")),
+                float(d["row"].get("amount", 0)),
+                d["irs"]["verdict"],
+                d["gaap"]["verdict"],
+                d["unicap"]["verdict"],
+                d["verdict"],
+                d["n_flags"],
+            )
+            for d in debate_rows
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+def _load_debate_log(cid: str) -> pd.DataFrame:
+    _init_debate_log(cid)
+    try:
+        conn = sqlite3.connect(get_ledger_path(cid))
+        df   = pd.read_sql_query(
+            "SELECT * FROM debate_log ORDER BY id", conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 # --- REVENUE ENGINE ---
 def _get_revenue(cid):
     """Return total revenue for a client (sum of all entries)."""
@@ -977,7 +1037,13 @@ def _gate():
         st.stop()
 
     if plan == "none":
-        st.warning("No license found for this client. Contact support.")
+        st.error("No license record found for this client.")
+        col_l, col_c, col_r = st.columns([1, 1.2, 1])
+        with col_c:
+            if st.button("💳 Go to Subscription", use_container_width=True,
+                         key="gate_none_sub_btn"):
+                st.session_state.page = "💳 Subscription"
+                st.rerun()
         st.stop()
 
     # Active trial — show banner but allow through
@@ -1654,6 +1720,9 @@ elif st.session_state.page == "🤖 Agentic Debate":
                 "verdict": verd, "icon": icon, "color": color,
                 "n_flags": sum(1 for a in [irs, gaap, ucap] if a["flagged"])
             })
+
+        # Persist this run to the database
+        _log_debate_run(st.session_state.active_uuid, debate_rows)
 
         total_irs  = sum(1 for d in debate_rows if d["irs"]["flagged"])
         total_gaap = sum(1 for d in debate_rows if d["gaap"]["flagged"])

@@ -12,6 +12,8 @@
 4. [System Requirements](#system-requirements)
 5. [License](#license)
 
+> For full operational details, troubleshooting, and the Receipt Vault guide see [USER_GUIDE.md](USER_GUIDE.md).
+
 ---
 
 ## Why Use This App
