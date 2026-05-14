@@ -18,6 +18,7 @@ except ImportError:
 
 import io
 import json
+import re
 import zipfile
 import tempfile
 import smtplib
@@ -558,6 +559,200 @@ def _migrate_legacy():
             count += 1
     return count
 
+# --- RECEIPT VAULT ENGINE ---
+
+def _receipts_dir(cid: str) -> str:
+    path = os.path.join(VAULT, cid, "receipts")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def _init_receipts_table(cid: str):
+    conn = sqlite3.connect(get_ledger_path(cid))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS receipts (
+            id           TEXT PRIMARY KEY,
+            filename     TEXT,
+            vendor       TEXT,
+            amount       REAL,
+            date         TEXT,
+            uploaded_at  TEXT,
+            matched_hash TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def _save_receipt_meta(cid: str, rec_id: str, filename: str,
+                       vendor: str, amount, date: str):
+    _init_receipts_table(cid)
+    conn = sqlite3.connect(get_ledger_path(cid))
+    conn.execute(
+        "INSERT OR REPLACE INTO receipts "
+        "(id, filename, vendor, amount, date, uploaded_at, matched_hash) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (rec_id, filename, vendor, amount, date,
+         datetime.today().isoformat(), None),
+    )
+    conn.commit()
+    conn.close()
+
+def _delete_receipt(cid: str, rec_id: str):
+    conn = sqlite3.connect(get_ledger_path(cid))
+    conn.execute("DELETE FROM receipts WHERE id=?", (rec_id,))
+    conn.commit()
+    conn.close()
+    # Remove the physical file if present
+    rdir = _receipts_dir(cid)
+    for f in os.listdir(rdir):
+        if f.startswith(rec_id):
+            try:
+                os.remove(os.path.join(rdir, f))
+            except OSError:
+                pass
+
+def _load_receipts(cid: str) -> pd.DataFrame:
+    _init_receipts_table(cid)
+    try:
+        conn = sqlite3.connect(get_ledger_path(cid))
+        df = pd.read_sql_query("SELECT * FROM receipts", conn)
+        conn.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def _parse_receipt_text(text: str) -> dict:
+    """Extract vendor, amount, and date from raw OCR text."""
+    # Amount — grab the largest dollar figure (most likely the total)
+    amt_candidates = re.findall(r'\$?\s*(\d{1,6}[.,]\d{2})\b', text)
+    amount = None
+    if amt_candidates:
+        try:
+            amounts = [float(a.replace(",", "")) for a in amt_candidates]
+            amount = max(amounts)  # receipt total is usually the largest figure
+        except ValueError:
+            pass
+
+    # Date — try multiple common formats
+    date_str = None
+    date_patterns = [
+        r'\b(\d{4}-\d{2}-\d{2})\b',
+        r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{4})\b',
+        r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2})\b',
+        r'\b([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})\b',
+    ]
+    fmt_sets = [
+        ["%Y-%m-%d"],
+        ["%m/%d/%Y", "%m-%d-%Y"],
+        ["%m/%d/%y", "%m-%d-%y"],
+        ["%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"],
+    ]
+    for pat, fmts in zip(date_patterns, fmt_sets):
+        m = re.search(pat, text)
+        if m:
+            raw = m.group(1).strip().rstrip(",")
+            for fmt in fmts:
+                try:
+                    date_str = datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+                    break
+                except ValueError:
+                    continue
+        if date_str:
+            break
+
+    # Vendor — first substantive line of text
+    vendor = ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and len(stripped) > 2 and not re.match(r'^[\d\s$.,/-]+$', stripped):
+            vendor = stripped[:60]
+            break
+
+    return {"vendor": vendor, "amount": amount, "date": date_str}
+
+def _ocr_extract(file_bytes: bytes, filename: str) -> tuple[dict, str]:
+    """
+    Run OCR on a receipt file.
+    Returns (parsed_dict, raw_text). parsed_dict keys: vendor, amount, date.
+    Falls back gracefully when optional libraries are missing.
+    """
+    text = ""
+    fname = filename.lower()
+
+    if fname.endswith(".pdf"):
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages[:4]:
+                    text += (page.extract_text() or "") + "\n"
+        except ImportError:
+            text = ""
+            return {"vendor": "", "amount": None, "date": None,
+                    "_error": "pdfplumber not installed. Run: pip install pdfplumber"}, text
+        except Exception as exc:
+            return {"vendor": "", "amount": None, "date": None,
+                    "_error": str(exc)}, text
+    else:
+        try:
+            import pytesseract
+            from PIL import Image as _PilImg
+            img = _PilImg.open(io.BytesIO(file_bytes))
+            text = pytesseract.image_to_string(img)
+        except ImportError:
+            return {"vendor": "", "amount": None, "date": None,
+                    "_error": "pytesseract not installed. Run: pip install pytesseract"}, text
+        except Exception as exc:
+            return {"vendor": "", "amount": None, "date": None,
+                    "_error": str(exc)}, text
+
+    return _parse_receipt_text(text), text
+
+def _match_receipts_to_ledger(ledger_df: pd.DataFrame,
+                               receipts_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Matching Engine — compare OCR-extracted receipts against the ledger.
+
+    Match rules:
+      • Amount within $0.01
+      • Date within a ±2 calendar-day window
+
+    Returns a copy of ledger_df with two extra columns:
+      receipt_status : 'Verified ✅'  |  'Missing Receipt ⚠️'
+      matched_vendor : vendor string from the matched receipt, or ''
+    """
+    result = ledger_df.copy()
+    result["receipt_status"] = "Missing Receipt ⚠️"
+    result["matched_vendor"]  = ""
+
+    if receipts_df.empty or "amount" not in receipts_df.columns:
+        return result
+
+    result["_tx_date"] = pd.to_datetime(result.get("date", pd.Series(dtype=str)),
+                                         errors="coerce")
+
+    rec = receipts_df.copy()
+    rec["_r_date"] = pd.to_datetime(rec.get("date", pd.Series(dtype=str)),
+                                     errors="coerce")
+    rec_valid = rec.dropna(subset=["_r_date", "amount"])
+
+    for idx, tx in result.iterrows():
+        tx_date   = tx["_tx_date"]
+        tx_amount = float(tx.get("amount") or 0)
+
+        if pd.isna(tx_date):
+            continue
+
+        for _, rr in rec_valid.iterrows():
+            date_diff   = abs((tx_date - rr["_r_date"]).days)
+            amount_diff = abs(tx_amount - float(rr["amount"] or 0))
+
+            if date_diff <= 2 and amount_diff <= 0.01:
+                result.at[idx, "receipt_status"] = "Verified ✅"
+                result.at[idx, "matched_vendor"]  = rr.get("vendor", "")
+                break  # first match wins
+
+    result.drop(columns=["_tx_date"], inplace=True)
+    return result
+
 # --- BACKUP / RESTORE ---
 def _build_vault_zip() -> bytes:
     """Zip the entire vault directory (all clients + registry) into memory."""
@@ -963,6 +1158,25 @@ with st.sidebar:
         st.session_state.auth = False
         st.rerun()
 
+    # Quick receipt drop-zone — only when a client is active
+    if st.session_state.get("active_uuid"):
+        st.markdown(
+            "<div style='border-top:1px solid #162032;margin:10px 0 8px;'></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption("🧾 Quick Receipt Upload")
+        _sb_receipt = st.file_uploader(
+            "Drop PDF or image",
+            type=["pdf", "png", "jpg", "jpeg", "webp"],
+            key="sb_receipt_up",
+            label_visibility="collapsed",
+        )
+        if _sb_receipt is not None:
+            st.session_state["_pending_receipt"] = _sb_receipt
+            if st.button("📎 Go to Receipt Vault", use_container_width=True):
+                st.session_state.page = "🧾 Receipt Vault"
+                st.rerun()
+
     st.session_state.page = st.radio("PIPELINE PHASES", [
         "🏠 Command Center",
         "🏢 Client Management",
@@ -976,6 +1190,7 @@ with st.sidebar:
         "📈 CFO Dashboard",
         "📄 PDF Reports",
         "📋 Tax Readiness",
+        "🧾 Receipt Vault",
         "📧 Email Delivery",
         "💬 AI CFO Chat"
     ])
@@ -3136,3 +3351,230 @@ elif st.session_state.page == "🏷️ AI Categorization":
             status.empty()
             st.success(f"✅ {total} rows categorized.")
             st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# --- PHASE: RECEIPT VAULT — Automated Receipt Reconciliation
+# ─────────────────────────────────────────────────────────────────────────────
+elif st.session_state.page == "🧾 Receipt Vault":
+    _gate()
+    cid = st.session_state.get("active_uuid", "")
+    client_name = st.session_state.get("active_name", "Client")
+
+    st.title(f"🧾 Receipt Vault — {client_name}")
+    st.caption(
+        "Upload PDF or image receipts → OCR extracts Vendor, Amount & Date → "
+        "Matching Engine reconciles against the ledger within a ±2-day window."
+    )
+
+    if not cid:
+        st.warning("Select a client first from Client Management.")
+        st.stop()
+
+    # ── Ensure table exists ──────────────────────────────────────────────────
+    _init_receipts_table(cid)
+
+    # ── Upload section ───────────────────────────────────────────────────────
+    st.subheader("1 · Upload Receipts")
+
+    # Honour a receipt dropped in the sidebar
+    pending_sb = st.session_state.pop("_pending_receipt", None)
+
+    uploaded = st.file_uploader(
+        "Drop PDF or image receipts here (multiple allowed)",
+        type=["pdf", "png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key="rv_uploader",
+    )
+
+    # Merge sidebar drop-in with uploader list
+    all_uploads = list(uploaded or [])
+    if pending_sb is not None and pending_sb not in all_uploads:
+        all_uploads.insert(0, pending_sb)
+
+    if all_uploads:
+        st.markdown(f"**{len(all_uploads)} file(s) ready — processing OCR…**")
+        ocr_results = []
+        for f in all_uploads:
+            file_bytes = f.read()
+            parsed, raw_text = _ocr_extract(file_bytes, f.name)
+
+            err = parsed.pop("_error", None)
+            if err:
+                st.error(f"**{f.name}**: {err}")
+                continue
+
+            rec_id = str(_uuid.uuid4())[:8]
+            ocr_results.append({
+                "_id":      rec_id,
+                "_bytes":   file_bytes,
+                "_fname":   f.name,
+                "vendor":   parsed.get("vendor", ""),
+                "amount":   parsed.get("amount"),
+                "date":     parsed.get("date", ""),
+                "_raw":     raw_text,
+            })
+
+        if ocr_results:
+            st.markdown("---")
+            st.subheader("2 · Confirm / Edit Extracted Fields")
+            st.caption("Review what OCR found and correct any errors before saving.")
+
+            confirmed = []
+            for i, rec in enumerate(ocr_results):
+                with st.expander(f"📄 {rec['_fname']}", expanded=True):
+                    c1, c2, c3 = st.columns(3)
+                    vendor = c1.text_input(
+                        "Vendor", value=rec["vendor"] or "",
+                        key=f"rv_vendor_{i}"
+                    )
+                    amount_raw = c2.text_input(
+                        "Amount ($)", value=str(rec["amount"] or ""),
+                        key=f"rv_amount_{i}"
+                    )
+                    date_val = c3.text_input(
+                        "Date (YYYY-MM-DD)", value=rec["date"] or "",
+                        key=f"rv_date_{i}"
+                    )
+                    try:
+                        amount_parsed = float(amount_raw.replace(",", "").replace("$", ""))
+                    except ValueError:
+                        amount_parsed = None
+
+                    if st.toggle("Show raw OCR text", key=f"rv_raw_{i}"):
+                        st.code(rec["_raw"][:1500] or "(no text extracted)", language="")
+
+                    confirmed.append({
+                        "_id":    rec["_id"],
+                        "_bytes": rec["_bytes"],
+                        "_fname": rec["_fname"],
+                        "vendor": vendor,
+                        "amount": amount_parsed,
+                        "date":   date_val,
+                    })
+
+            st.markdown("---")
+            if st.button("💾 Save Receipts to Vault", type="primary",
+                         use_container_width=True):
+                rdir = _receipts_dir(cid)
+                saved = 0
+                for rec in confirmed:
+                    if not rec["vendor"] and rec["amount"] is None:
+                        st.warning(f"Skipped {rec['_fname']} — no vendor or amount found.")
+                        continue
+                    # Persist file bytes
+                    ext = os.path.splitext(rec["_fname"])[1]
+                    out_path = os.path.join(rdir, rec["_id"] + ext)
+                    with open(out_path, "wb") as fh:
+                        fh.write(rec["_bytes"])
+                    # Persist metadata
+                    _save_receipt_meta(
+                        cid, rec["_id"], rec["_fname"],
+                        rec["vendor"], rec["amount"], rec["date"]
+                    )
+                    saved += 1
+                st.success(f"✅ {saved} receipt(s) saved to vault.")
+                st.rerun()
+
+    st.divider()
+
+    # ── Saved receipts list ──────────────────────────────────────────────────
+    receipts_df = _load_receipts(cid)
+
+    st.subheader("3 · Stored Receipts")
+    if receipts_df.empty:
+        st.info("No receipts stored yet. Upload receipts above.")
+    else:
+        disp = receipts_df[["filename", "vendor", "amount", "date", "uploaded_at"]].copy()
+        disp.columns = ["File", "Vendor", "Amount ($)", "Date", "Uploaded"]
+        st.dataframe(disp, use_container_width=True)
+
+        del_id = st.selectbox(
+            "Delete a receipt",
+            ["— select —"] + receipts_df["id"].tolist(),
+            key="rv_del_sel"
+        )
+        if del_id != "— select —" and st.button("🗑️ Delete Selected Receipt"):
+            _delete_receipt(cid, del_id)
+            st.success("Receipt deleted.")
+            st.rerun()
+
+    st.divider()
+
+    # ── Matching Engine + Audit Log ──────────────────────────────────────────
+    st.subheader("4 · Reconciliation Audit Log")
+    st.caption(
+        "Every ledger transaction is matched against stored receipts. "
+        "Match criteria: amount within $0.01 AND date within ±2 days."
+    )
+
+    ledger = load_db()
+    if ledger.empty:
+        st.info("No ledger transactions found. Import bank data first (📥 Ingestion).")
+        st.stop()
+
+    reconciled = _match_receipts_to_ledger(ledger, receipts_df)
+
+    # KPI summary
+    total_tx    = len(reconciled)
+    verified    = (reconciled["receipt_status"] == "Verified ✅").sum()
+    missing     = total_tx - verified
+    pct         = round(verified / total_tx * 100) if total_tx else 0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Transactions", total_tx)
+    k2.metric("Verified ✅",         verified,
+              delta=f"{pct}% covered", delta_color="normal")
+    k3.metric("Missing Receipt ⚠️",  missing,
+              delta=f"{100 - pct}% uncovered",
+              delta_color="inverse" if missing > 0 else "off")
+    k4.metric("Receipt Coverage",    f"{pct}%")
+
+    st.markdown("---")
+
+    # Filter toggle
+    filter_mode = st.radio(
+        "Show",
+        ["All Transactions", "Missing Receipt Only", "Verified Only"],
+        horizontal=True,
+        key="rv_filter"
+    )
+
+    display_cols = ["date", "description", "amount", "category",
+                    "receipt_status", "matched_vendor"]
+    show_cols = [c for c in display_cols if c in reconciled.columns]
+    view = reconciled[show_cols].copy()
+
+    if filter_mode == "Missing Receipt Only":
+        view = view[view["receipt_status"] == "Missing Receipt ⚠️"]
+    elif filter_mode == "Verified Only":
+        view = view[view["receipt_status"] == "Verified ✅"]
+
+    view = view.sort_values("receipt_status", ascending=True).reset_index(drop=True)
+
+    st.dataframe(
+        view.style.apply(
+            lambda col: [
+                "background-color:#0d2b1d; color:#00C896"
+                if v == "Verified ✅"
+                else "background-color:#2b0d0d; color:#ff6b6b"
+                if v == "Missing Receipt ⚠️"
+                else ""
+                for v in col
+            ]
+            if col.name == "receipt_status"
+            else [""] * len(col),
+            axis=0,
+        ),
+        use_container_width=True,
+        height=420,
+    )
+
+    # CSV export of audit log
+    csv_bytes = view.to_csv(index=False).encode()
+    st.download_button(
+        "⬇️ Export Audit Log (CSV)",
+        data=csv_bytes,
+        file_name=f"receipt_audit_{client_name}_{datetime.today().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        key="rv_export"
+    )
