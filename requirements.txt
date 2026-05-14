@@ -7,3 +7,5 @@ requests==2.32.3
 Pillow==12.2.0
 numpy==1.26.4
 openpyxl==3.1.2
+pdfplumber==0.11.4
+pytesseract==0.3.13
