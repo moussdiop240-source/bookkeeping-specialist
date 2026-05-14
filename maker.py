@@ -1351,7 +1351,7 @@ if st.session_state.page == "🏠 Command Center":
                 xaxis=dict(gridcolor="#162032"), yaxis=dict(gridcolor="#162032"),
                 margin=dict(l=0, r=0, t=10, b=0), height=280
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
 
         with ch2:
             st.subheader("Client Aging Distribution")
@@ -1368,7 +1368,7 @@ if st.session_state.page == "🏠 Command Center":
                 xaxis=dict(gridcolor="#162032"), yaxis=dict(gridcolor="#162032"),
                 margin=dict(l=0, r=0, t=10, b=0), height=280, showlegend=False
             )
-            st.plotly_chart(fig_aging, use_container_width=True)
+            st.plotly_chart(fig_aging, width='stretch')
 
         st.divider()
 
@@ -1754,7 +1754,7 @@ elif st.session_state.page == "🤖 Agentic Debate":
             xaxis=dict(showgrid=False, color="#546880"),
             yaxis=dict(color="#8A9BB5"), font=dict(color="#8A9BB5")
         )
-        st.plotly_chart(fig_risk, use_container_width=True)
+        st.plotly_chart(fig_risk, width='stretch')
         st.divider()
 
         fc1, fc2, fc3 = st.columns([2, 2, 1])
@@ -1960,7 +1960,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
                     color_discrete_sequence=['#EF553B']
                 )
                 fig_trend.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=300)
-                st.plotly_chart(fig_trend, use_container_width=True)
+                st.plotly_chart(fig_trend, width='stretch')
             else:
                 st.info("No date column found in ledger.")
 
@@ -1974,7 +1974,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
                     hole=0.45, color_discrete_sequence=px.colors.qualitative.Set2
                 )
                 fig_donut.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=300)
-                st.plotly_chart(fig_donut, use_container_width=True)
+                st.plotly_chart(fig_donut, width='stretch')
             else:
                 st.info("Run AI Categorization first to see category breakdown.")
 
@@ -1993,7 +1993,7 @@ elif st.session_state.page == "📈 CFO Dashboard":
             totals={"marker": {"color": "#636EFA"}}
         ))
         fig_wf.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=320)
-        st.plotly_chart(fig_wf, use_container_width=True)
+        st.plotly_chart(fig_wf, width='stretch')
 
         # --- Top 10 Expenses Table ---
         st.subheader("Top Expenses")
