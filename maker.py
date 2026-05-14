@@ -387,7 +387,7 @@ if FPDF_AVAILABLE:
             self.set_text_color(150, 150, 150)
             self.cell(
                 0, 5,
-                f"AI Bookkeeping Specialist  ·  {self._client}  ·  Page {self.page_no()}",
+                f"AI Bookkeeping Specialist  -  {self._client.encode('latin-1', errors='replace').decode('latin-1')}  -  Page {self.page_no()}",
                 align="C"
             )
 
@@ -791,6 +791,11 @@ def _match_receipts_to_ledger(ledger_df: pd.DataFrame,
     return result
 
 
+def _pdf_safe(text: str) -> str:
+    """Strip any character that fpdf/helvetica can't encode (Latin-1 only)."""
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
 def _generate_audit_shield_pdf(client_name: str, reconciled: pd.DataFrame) -> bytes:
     """Build an Audit-Shield PDF: compliance score, KPI tiles, and colour-coded transaction table."""
     # ── Stats ────────────────────────────────────────────────────────────────
@@ -836,7 +841,7 @@ def _generate_audit_shield_pdf(client_name: str, reconciled: pd.DataFrame) -> by
     # ── Client + date ─────────────────────────────────────────────────────────
     pdf.set_text_color(30, 30, 30)
     pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, f"Client: {client_name}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, _pdf_safe(f"Client: {client_name}"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(90, 90, 90)
     pdf.cell(0, 6, f"Report Date: {today}   |   Period: {period}",
@@ -936,15 +941,15 @@ def _generate_audit_shield_pdf(client_name: str, reconciled: pd.DataFrame) -> by
         else:
             fill_r, fill_g, fill_b = 255, 235, 235
 
-        date_str   = str(row.get("date", ""))[:10]
-        desc_str   = str(row.get("description", ""))[:32]
+        date_str   = _pdf_safe(str(row.get("date", ""))[:10])
+        desc_str   = _pdf_safe(str(row.get("description", ""))[:32])
         amt_raw    = row.get("amount")
         try:
             amt_str = f"${float(amt_raw):,.2f}"
         except (TypeError, ValueError):
-            amt_str = str(amt_raw or "")
-        cat_str    = str(row.get("category", ""))[:16]
-        vendor_str = str(row.get("matched_vendor", ""))[:13]
+            amt_str = _pdf_safe(str(amt_raw or ""))
+        cat_str    = _pdf_safe(str(row.get("category", ""))[:16])
+        vendor_str = _pdf_safe(str(row.get("matched_vendor", ""))[:13])
         status_str = "VERIFIED" if is_verified else "MISSING"
 
         pdf.set_fill_color(fill_r, fill_g, fill_b)
