@@ -566,6 +566,39 @@ def _receipts_dir(cid: str) -> str:
     os.makedirs(path, exist_ok=True)
     return path
 
+def _reports_dir(cid: str) -> str:
+    path = os.path.join(VAULT, cid, "reports")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def _save_report_to_vault(cid: str, client_name: str, pdf_bytes: bytes) -> str:
+    """Persist a generated PDF report to vault/{uuid}/reports/ and return the file path."""
+    rdir  = _reports_dir(cid)
+    stamp = datetime.today().strftime("%Y%m%d_%H%M%S")
+    safe_name = client_name.replace(" ", "_").replace("/", "-")
+    fname = f"AuditShield_{safe_name}_{stamp}.pdf"
+    fpath = os.path.join(rdir, fname)
+    with open(fpath, "wb") as fh:
+        fh.write(pdf_bytes)
+    return fpath
+
+def _list_saved_reports(cid: str) -> list:
+    """Return metadata for all saved PDF reports, newest first."""
+    rdir = _reports_dir(cid)
+    rows = []
+    for fname in sorted(os.listdir(rdir), reverse=True):
+        if not fname.lower().endswith(".pdf"):
+            continue
+        fpath = os.path.join(rdir, fname)
+        stat  = os.stat(fpath)
+        rows.append({
+            "filename": fname,
+            "path":     fpath,
+            "size_kb":  round(stat.st_size / 1024, 1),
+            "saved_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        })
+    return rows
+
 def _init_receipts_table(cid: str):
     conn = sqlite3.connect(get_ledger_path(cid))
     conn.execute("""
@@ -3862,7 +3895,7 @@ elif st.session_state.page == "🧾 Receipt Vault":
     )
 
     if st.button(
-        "📄 Download Audit-Shield Report",
+        "📄 Generate & Save Audit-Shield Report",
         type="primary",
         use_container_width=True,
         key="rv_pdf_gen"
@@ -3870,17 +3903,42 @@ elif st.session_state.page == "🧾 Receipt Vault":
         with st.spinner("Generating Audit-Shield PDF…"):
             try:
                 pdf_bytes = _generate_audit_shield_pdf(client_name, reconciled)
-                fname = (
-                    f"AuditShield_{client_name.replace(' ', '_')}"
-                    f"_{datetime.today().strftime('%Y%m%d')}.pdf"
+                saved_path = _save_report_to_vault(cid, client_name, pdf_bytes)
+                fname = os.path.basename(saved_path)
+                st.success(
+                    f"Saved to vault: `vault/{cid}/reports/{fname}`"
                 )
                 st.download_button(
-                    "⬇️ Click to Download PDF",
+                    "⬇️ Download PDF",
                     data=pdf_bytes,
                     file_name=fname,
                     mime="application/pdf",
                     key="rv_pdf_dl"
                 )
-                st.success("PDF ready — click the button above to save it.")
             except Exception as _pdf_err:
                 st.error(f"PDF generation failed: {_pdf_err}")
+
+    st.divider()
+
+    # ── Past Reports Archive ─────────────────────────────────────────────
+    st.subheader("6 · Reports Archive")
+    st.caption(f"All Audit-Shield reports saved to `vault/{cid}/reports/` — your secure filing cabinet.")
+
+    saved_reports = _list_saved_reports(cid)
+    if not saved_reports:
+        st.info("No reports generated yet. Click the button above to create your first report.")
+    else:
+        for rep in saved_reports:
+            col_a, col_b, col_c = st.columns([4, 1, 2])
+            col_a.markdown(f"**{rep['filename']}**")
+            col_b.caption(f"{rep['size_kb']} KB")
+            col_c.caption(rep["saved_at"])
+            with open(rep["path"], "rb") as fh:
+                st.download_button(
+                    f"⬇️ Download",
+                    data=fh.read(),
+                    file_name=rep["filename"],
+                    mime="application/pdf",
+                    key=f"rv_arch_{rep['filename']}",
+                    use_container_width=True,
+                )
