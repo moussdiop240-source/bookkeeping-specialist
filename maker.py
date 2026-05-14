@@ -2800,8 +2800,8 @@ elif st.session_state.page == "📋 Tax Readiness":
                     tax_pdf.cell(0, 8, section, new_x="LMARGIN", new_y="NEXT")
                     tax_pdf.set_font("Helvetica", "", 9)
                     for item in items:
-                        tax_pdf.cell(8, 6, "[ ]")
-                        tax_pdf.multi_cell(0, 6, item)
+                        tax_pdf.cell(8, 6, "[ ]", new_x="RIGHT", new_y="TOP")
+                        tax_pdf.multi_cell(174, 6, item, new_x="LMARGIN", new_y="NEXT")
                     tax_pdf.ln(2)
 
                 # IRS flag detail
