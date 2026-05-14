@@ -695,6 +695,10 @@ def _ocr_extract(file_bytes: bytes, filename: str) -> tuple[dict, str]:
         try:
             import pytesseract
             from PIL import Image as _PilImg
+            # Windows default install path — no-op if already on PATH
+            _tess = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+            if os.path.exists(_tess):
+                pytesseract.pytesseract.tesseract_cmd = _tess
             img = _PilImg.open(io.BytesIO(file_bytes))
             text = pytesseract.image_to_string(img)
         except ImportError:

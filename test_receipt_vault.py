@@ -199,7 +199,10 @@ except ImportError as e:
 # ── TEST 4: pytesseract ───────────────────────────────────────────────
 print("\nTEST 4: pytesseract / Tesseract binary")
 try:
-    import pytesseract
+    import pytesseract, os
+    _tess = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.path.exists(_tess):
+        pytesseract.pytesseract.tesseract_cmd = _tess
     ver = pytesseract.get_tesseract_version()
     check(f"Tesseract binary found ({ver})", True)
 except Exception as e:
