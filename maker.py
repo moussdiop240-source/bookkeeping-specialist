@@ -757,6 +757,183 @@ def _match_receipts_to_ledger(ledger_df: pd.DataFrame,
     result.drop(columns=["_tx_date"], inplace=True)
     return result
 
+
+def _generate_audit_shield_pdf(client_name: str, reconciled: pd.DataFrame) -> bytes:
+    """Build an Audit-Shield PDF: compliance score, KPI tiles, and colour-coded transaction table."""
+    # ── Stats ────────────────────────────────────────────────────────────────
+    total    = len(reconciled)
+    verified = int(reconciled.get("receipt_status", pd.Series(dtype=str))
+                   .str.contains("Verified", na=False).sum())
+    missing  = total - verified
+    pct      = round(verified / total * 100) if total else 0
+
+    if pct >= 90:
+        grade, grade_label, gr, gg, gb = "A", "Excellent",  0, 160, 100
+    elif pct >= 80:
+        grade, grade_label, gr, gg, gb = "B", "Good",       0, 140, 200
+    elif pct >= 70:
+        grade, grade_label, gr, gg, gb = "C", "Fair",     200, 160,   0
+    elif pct >= 60:
+        grade, grade_label, gr, gg, gb = "D", "Poor",     220, 100,   0
+    else:
+        grade, grade_label, gr, gg, gb = "F", "Critical", 200,  30,  30
+
+    today  = datetime.today().strftime("%B %d, %Y")
+    period = datetime.today().strftime("%B %Y")
+
+    pdf = _BookkeepingPDF(client_name=client_name)
+    pdf.set_margins(18, 18, 18)
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # ── Header banner ─────────────────────────────────────────────────────────
+    pdf.set_fill_color(0, 30, 20)
+    pdf.rect(0, 0, 210, 34, "F")
+    pdf.set_y(8)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(0, 200, 150)
+    pdf.cell(0, 11, "AUDIT-SHIELD REPORT", align="C",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(180, 220, 200)
+    pdf.cell(0, 7, "AI Bookkeeping Specialist  -  2026 IRS & GAAP Compliant",
+             align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+
+    # ── Client + date ─────────────────────────────────────────────────────────
+    pdf.set_text_color(30, 30, 30)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, f"Client: {client_name}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(90, 90, 90)
+    pdf.cell(0, 6, f"Report Date: {today}   |   Period: {period}",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # ── Teal divider ──────────────────────────────────────────────────────────
+    pdf.set_draw_color(0, 180, 130)
+    pdf.set_line_width(0.8)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(6)
+
+    # ── Compliance Score ──────────────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 7, "Compliance Score", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    box_y = pdf.get_y()
+    pdf.set_fill_color(gr, gg, gb)
+    pdf.rect(18, box_y, 34, 26, "F")
+    pdf.set_xy(18, box_y + 2)
+    pdf.set_font("Helvetica", "B", 26)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(34, 20, grade, align="C", new_x="RIGHT", new_y="TOP")
+
+    pdf.set_xy(58, box_y + 3)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_text_color(gr, gg, gb)
+    pdf.cell(0, 8, f"{pct}% Receipt Coverage  -  {grade_label}",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_xy(58, box_y + 14)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(0, 5,
+             "Grading:  A = 90%+   B = 80-89%   C = 70-79%   D = 60-69%   F = below 60%",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_y(box_y + 32)
+    pdf.ln(4)
+
+    # ── KPI tiles ─────────────────────────────────────────────────────────────
+    kpis = [
+        ("Total Transactions", str(total),    40,  40,  40),
+        ("Verified",           str(verified),  0, 160, 100),
+        ("Missing Receipt",    str(missing),  200,  30,  30),
+        ("Receipt Coverage",   f"{pct}%",     gr,  gg,  gb),
+    ]
+    tile_w, tile_gap = 41, 4
+    kpi_top = pdf.get_y()
+    for i, (lbl, val, kr, kg, kb) in enumerate(kpis):
+        tx = 18 + i * (tile_w + tile_gap)
+        pdf.set_fill_color(248, 248, 248)
+        pdf.set_draw_color(220, 220, 220)
+        pdf.set_line_width(0.3)
+        pdf.rect(tx, kpi_top, tile_w, 20, "FD")
+        pdf.set_xy(tx, kpi_top + 2)
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_text_color(kr, kg, kb)
+        pdf.cell(tile_w, 8, val, align="C", new_x="RIGHT", new_y="TOP")
+        pdf.set_xy(tx, kpi_top + 12)
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(tile_w, 5, lbl, align="C", new_x="RIGHT", new_y="TOP")
+    pdf.set_y(kpi_top + 26)
+
+    # ── Section divider ───────────────────────────────────────────────────────
+    pdf.set_draw_color(0, 180, 130)
+    pdf.set_line_width(0.8)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(6)
+
+    # ── Transaction detail table ──────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 7, "Transaction Detail", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    # Columns: Date | Description | Amount | Category | Vendor | Status
+    col_w = [24, 56, 24, 30, 22, 18]  # sum = 174 = usable page width
+    hdrs  = ["Date", "Description", "Amount ($)", "Category", "Vendor", "Status"]
+    pdf.set_fill_color(0, 30, 20)
+    pdf.set_text_color(0, 200, 150)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_line_width(0.3)
+    for h, w in zip(hdrs, col_w):
+        pdf.cell(w, 7, h, border=1, fill=True, new_x="RIGHT", new_y="TOP")
+    pdf.ln(7)
+
+    for i, (_, row) in enumerate(reconciled.iterrows()):
+        status_raw  = str(row.get("receipt_status", ""))
+        is_verified = "Verified" in status_raw
+
+        if is_verified:
+            fill_r, fill_g, fill_b = 232, 250, 240
+        elif i % 2 == 0:
+            fill_r, fill_g, fill_b = 255, 242, 242
+        else:
+            fill_r, fill_g, fill_b = 255, 235, 235
+
+        date_str   = str(row.get("date", ""))[:10]
+        desc_str   = str(row.get("description", ""))[:32]
+        amt_raw    = row.get("amount")
+        try:
+            amt_str = f"${float(amt_raw):,.2f}"
+        except (TypeError, ValueError):
+            amt_str = str(amt_raw or "")
+        cat_str    = str(row.get("category", ""))[:16]
+        vendor_str = str(row.get("matched_vendor", ""))[:13]
+        status_str = "VERIFIED" if is_verified else "MISSING"
+
+        pdf.set_fill_color(fill_r, fill_g, fill_b)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(40, 40, 40)
+        for val, w in zip([date_str, desc_str, amt_str, cat_str, vendor_str], col_w[:-1]):
+            pdf.cell(w, 6, val, border=1, fill=True, new_x="RIGHT", new_y="TOP")
+
+        # Status cell — coloured bold text
+        if is_verified:
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_text_color(0, 140, 80)
+        else:
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_text_color(200, 30, 30)
+        pdf.cell(col_w[-1], 6, status_str, border=1, fill=True,
+                 new_x="RIGHT", new_y="TOP")
+        pdf.ln(6)
+
+    return bytes(pdf.output())
+
+
 # --- BACKUP / RESTORE ---
 def _build_vault_zip() -> bytes:
     """Zip the entire vault directory (all clients + registry) into memory."""
@@ -3651,3 +3828,59 @@ elif st.session_state.page == "🧾 Receipt Vault":
         mime="text/csv",
         key="rv_export"
     )
+
+    st.divider()
+
+    # ── Audit-Shield PDF Export ──────────────────────────────────────────
+    st.subheader("5 · Audit-Shield PDF Report")
+    st.caption(
+        "Generate a professional, audit-ready PDF with your Compliance Score, "
+        "colour-coded transaction table (green = Verified, red = Missing), "
+        "and a KPI summary — ready to share with your CPA or IRS auditor."
+    )
+
+    pct_display = pct  # already computed above
+    if pct_display >= 90:
+        grade_display = "A - Excellent"
+        badge_color   = "green"
+    elif pct_display >= 80:
+        grade_display = "B - Good"
+        badge_color   = "blue"
+    elif pct_display >= 70:
+        grade_display = "C - Fair"
+        badge_color   = "orange"
+    elif pct_display >= 60:
+        grade_display = "D - Poor"
+        badge_color   = "orange"
+    else:
+        grade_display = "F - Critical"
+        badge_color   = "red"
+
+    st.markdown(
+        f"**Current Compliance Score:** "
+        f":{badge_color}[{pct_display}%  —  Grade {grade_display}]"
+    )
+
+    if st.button(
+        "📄 Download Audit-Shield Report",
+        type="primary",
+        use_container_width=True,
+        key="rv_pdf_gen"
+    ):
+        with st.spinner("Generating Audit-Shield PDF…"):
+            try:
+                pdf_bytes = _generate_audit_shield_pdf(client_name, reconciled)
+                fname = (
+                    f"AuditShield_{client_name.replace(' ', '_')}"
+                    f"_{datetime.today().strftime('%Y%m%d')}.pdf"
+                )
+                st.download_button(
+                    "⬇️ Click to Download PDF",
+                    data=pdf_bytes,
+                    file_name=fname,
+                    mime="application/pdf",
+                    key="rv_pdf_dl"
+                )
+                st.success("PDF ready — click the button above to save it.")
+            except Exception as _pdf_err:
+                st.error(f"PDF generation failed: {_pdf_err}")
