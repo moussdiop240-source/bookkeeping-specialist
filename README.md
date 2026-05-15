@@ -85,6 +85,8 @@ Your financial data never leaves your computer. No cloud sync. No monthly SaaS s
 
 ### One-Click Launch (Recommended)
 
+![Launcher console](screenshot_launcher.png)
+
 Double-click **`launch_bookkeeper.bat`** in the project folder.
 
 It handles everything automatically:

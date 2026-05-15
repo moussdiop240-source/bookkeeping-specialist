@@ -9,8 +9,9 @@ license_keys.txt
 vault/
 clients/
 
-# Screenshots and test artifacts
+# Screenshots and test artifacts (tracked ones are explicitly allowed below)
 *.png
+!screenshot_launcher.png
 streamlit_log.txt
 
 # Python
