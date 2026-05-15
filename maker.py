@@ -1,4 +1,5 @@
 ﻿import streamlit as st
+import streamlit.components.v1 as _st_components
 from PIL import Image, ImageDraw
 import pandas as pd
 import sqlite3
@@ -1295,6 +1296,7 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 # Force initialize all keys to prevent AttributeError
 defaults = {
     'auth': False,
+    'show_portal': False,
     'active_uuid': "",
     'active_name': "No Client",
     'license': {},
@@ -1312,12 +1314,51 @@ for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# --- 2. AUTHENTICATION GATE ---
+# Detect CTA clicks coming from the index.html iframe (?login=1)
+if st.query_params.get("login") == "1":
+    st.session_state.show_portal = True
+    st.query_params.clear()
+
+# --- 2. ROUTING GATE ---
 if not st.session_state.auth:
     st.markdown(
         "<style>.block-container{padding-top:0 !important; padding-bottom:0 !important;}</style>",
         unsafe_allow_html=True
     )
+
+    # ── 2a. LANDING PAGE — index.html rendered inside Streamlit ──────────────
+    if not st.session_state.show_portal:
+        # Suppress all Streamlit chrome so the full-page marketing site shows
+        st.markdown("""
+        <style>
+          #root > div:first-child { padding-top: 0 !important; }
+          footer { display: none !important; }
+          header[data-testid="stHeader"] { display: none !important; }
+          .block-container { padding: 0 !important; max-width: 100% !important; }
+        </style>""", unsafe_allow_html=True)
+
+        # Load index.html from disk (never modified)
+        _idx_path = os.path.join(os.path.dirname(__file__), "index.html")
+        with open(_idx_path, "r", encoding="utf-8") as _f:
+            _idx_html = _f.read()
+
+        # In-memory only: redirect every "Launch App" / "Open the App" CTA so
+        # clicking from inside the iframe navigates the top-level Streamlit page
+        # to ?login=1, which Streamlit catches above and sets show_portal=True.
+        _login_url = "http://localhost:8501/?login=1"
+        _idx_html = _idx_html.replace(
+            'href="http://localhost:8501"',
+            f'href="{_login_url}" target="_top"'
+        )
+        _idx_html = _idx_html.replace(
+            "href='http://localhost:8501'",
+            f"href='{_login_url}' target='_top'"
+        )
+
+        _st_components.html(_idx_html, height=5800, scrolling=True)
+        st.stop()
+
+    # ── 2b. ACCESS PORTAL — shown after "Client Login" is clicked ─────────────
     _, col_c, _ = st.columns([1, 1.4, 1])
     with col_c:
         st.markdown("""
@@ -1353,6 +1394,10 @@ if not st.session_state.auth:
             "🔒 No cloud sync &nbsp;·&nbsp; SHA-256 ledger integrity</p>",
             unsafe_allow_html=True
         )
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.button("← Back to Home", use_container_width=True, key="portal_back"):
+            st.session_state.show_portal = False
+            st.rerun()
     st.stop()
 
 # --- 3. DATA PERSISTENCE ENGINE ---
@@ -1447,6 +1492,7 @@ with st.sidebar:
 
     if st.button("🚪 Logout"):
         st.session_state.auth = False
+        st.session_state.show_portal = False
         st.rerun()
 
     # Quick receipt drop-zone — only when a client is active
