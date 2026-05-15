@@ -1330,12 +1330,15 @@ if not st.session_state.auth:
     if not st.session_state.show_portal:
         # Hide Streamlit chrome and unlock every container so the iframe
         # can expand to its full height and the page scrolls naturally.
+        # Also register a storage-event listener: when the sandboxed iframe
+        # sets localStorage('streamlit_show_portal'), this handler navigates
+        # the parent window to ?login=1 (sandbox blocks direct navigation
+        # from the iframe but localStorage writes cross window boundaries).
         st.markdown("""
         <style>
           header[data-testid="stHeader"],
           footer, #MainMenu { display: none !important; }
 
-          /* Unlock every Streamlit wrapper that clips or constrains height */
           html, body,
           .stApp,
           [data-testid="stAppViewContainer"],
@@ -1356,6 +1359,45 @@ if not st.session_state.auth:
             display: block !important;
           }
         </style>""", unsafe_allow_html=True)
+
+        # st.markdown script tags are not executed by React's innerHTML.
+        # The <img onerror> trick runs JS directly in the parent Streamlit page.
+        # It registers a storage-event listener: when the sandboxed iframe sets
+        # localStorage('streamlit_show_portal'), this navigates to ?login=1.
+        # A real Streamlit button positioned fixed over the nav's "Launch App →".
+        # Streamlit intercepts anchor-link clicks in the parent page so only a
+        # native st.button can reliably trigger a Python session state change.
+        st.markdown("""
+        <style>
+          [data-testid="stButton"] {
+            position: fixed !important;
+            top: 10px !important;
+            right: 20px !important;
+            left: auto !important;
+            width: auto !important;
+            z-index: 99999 !important;
+          }
+          [data-testid="stButton"] > div,
+          [data-testid="stButton"] > div > div {
+            width: auto !important;
+          }
+          [data-testid="stButton"] button {
+            background: linear-gradient(135deg,#00C896,#0070F3) !important;
+            color: #fff !important;
+            border: none !important;
+            border-radius: 6px !important;
+            padding: 9px 24px !important;
+            font-weight: 700 !important;
+            font-size: 14px !important;
+            letter-spacing: 0.3px !important;
+            box-shadow: 0 2px 14px rgba(0,200,150,.35) !important;
+            white-space: nowrap !important;
+          }
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button("Launch App →", key="landing_launch"):
+            st.session_state.show_portal = True
+            st.rerun()
 
         # Load index.html from disk (never modified)
         _idx_path = os.path.join(os.path.dirname(__file__), "index.html")
@@ -1397,6 +1439,19 @@ if not st.session_state.auth:
 
   document.querySelectorAll('a').forEach(function (a) {
     var raw = a.getAttribute("href") || "";
+
+    // CTA buttons (Open the App, Get Started, etc.) — sandbox blocks all
+    // parent navigation from the iframe. Scroll to top so the user sees
+    // the real "Launch App →" link injected in the parent Streamlit page.
+    if (raw.indexOf("localhost:8501") !== -1 && raw.indexOf("#") === -1) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        try { window.parent.scrollTo({ top: 0, behavior: "smooth" }); } catch (err) {}
+      });
+      return;
+    }
+
+    // Anchor links: scroll the parent Streamlit page to the section
     if (!raw.startsWith("#") || raw === "#") return;
     a.addEventListener("click", function (e) {
       e.preventDefault();
