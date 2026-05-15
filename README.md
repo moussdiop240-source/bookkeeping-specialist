@@ -8,6 +8,8 @@
 
 1. [Why Use This App](#why-use-this-app)
 2. [Quick Start](#quick-start)
+   - [One-Click Launch (Recommended)](#one-click-launch-recommended)
+   - [Manual Launch](#manual-launch)
 3. [How to Use the AI Tax Auditor](#how-to-use-the-ai-tax-auditor)
 4. [System Requirements](#system-requirements)
 5. [License](#license)
