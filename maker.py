@@ -1340,7 +1340,8 @@ if not st.session_state.auth:
             height: 100vh !important; overflow: hidden !important;
           }
           /* Stretch the component container to fill the full viewport */
-          [data-testid="stCustomComponentV1"] {
+          [data-testid="stIFrame"],
+          [data-testid="stElementContainer"]:has([data-testid="stIFrame"]) {
             position: fixed !important;
             inset: 0 !important;
             width: 100vw !important;
@@ -1348,7 +1349,7 @@ if not st.session_state.auth:
             z-index: 9999 !important;
             pointer-events: auto !important;
           }
-          [data-testid="stCustomComponentV1"] iframe {
+          [data-testid="stIFrame"] iframe {
             width: 100% !important;
             height: 100% !important;
             border: none !important;
@@ -1373,8 +1374,37 @@ if not st.session_state.auth:
             f"href='{_login_url}' target='_top'"
         )
 
-        # height=1 — the CSS above overrides it to 100vh
-        _st_components.html(_idx_html, height=1, scrolling=False)
+        # Inject: hide scrollbar + intercept anchor-link clicks.
+        # In an srcdoc iframe the base URL is the parent (localhost:8501), so
+        # href="#features" resolves to http://localhost:8501/#features and a
+        # plain click navigates the iframe rather than scrolling within it.
+        # The script below catches those clicks and calls scrollIntoView()
+        # instead, which is the standard smooth-scroll behaviour.
+        _idx_html = _idx_html.replace(
+            '</head>',
+            '''<style>
+html{-ms-overflow-style:none;scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('a').forEach(function (a) {
+    var raw = a.getAttribute("href") || "";
+    if (raw.startsWith("#")) {
+      a.addEventListener("click", function (e) {
+        var el = document.getElementById(raw.slice(1));
+        if (el) { e.preventDefault(); el.scrollIntoView({ behavior: "smooth" }); }
+      });
+    }
+  });
+});
+</script>
+</head>''',
+            1
+        )
+
+        # scrolling=True lets the page scroll inside the iframe.
+        _st_components.html(_idx_html, height=1, scrolling=True)
         st.stop()
 
     # ── 2b. ACCESS PORTAL — shown after "Client Login" is clicked ─────────────
