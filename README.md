@@ -10,9 +10,10 @@
 2. [Quick Start](#quick-start)
    - [One-Click Launch (Recommended)](#one-click-launch-recommended)
    - [Manual Launch](#manual-launch)
-3. [How to Use the AI Tax Auditor](#how-to-use-the-ai-tax-auditor)
-4. [System Requirements](#system-requirements)
-5. [License](#license)
+3. [LinkedIn Landing Page](#linkedin-landing-page)
+4. [How to Use the AI Tax Auditor](#how-to-use-the-ai-tax-auditor)
+5. [System Requirements](#system-requirements)
+6. [License](#license)
 
 > For full operational details, troubleshooting, and the Receipt Vault guide see [USER_GUIDE.md](USER_GUIDE.md).
 
@@ -113,6 +114,28 @@ On first run it also creates an **AI Bookkeeper** shortcut on your Desktop with 
 ```
 
 Then open http://localhost:8501 in your browser.
+
+---
+
+## LinkedIn Landing Page
+
+[`linkedin.html`](linkedin.html) is a standalone authority page built for LinkedIn marketing campaigns.
+
+**What it covers:**
+
+| Pillar | Focus |
+|---|---|
+| Data Sovereignty | 100% local AI, SHA-256 ledger integrity, zero cloud exposure |
+| Agentic Audit | IRS §274 vs. GAAP ASC 360 vs. UNICAP §263A — three-agent debate |
+| Audit-Shield | Automated receipt flagging, Schedule C/E output, 7-section PDF |
+
+**Key design decisions:**
+- No pricing — pure capability and authority positioning
+- Single CTA: **Request Private Demo Access** (opens a pre-filled email to `moussdiop240@gmail.com`)
+- Same Midnight Finance design system as the main landing page
+- Fully self-contained — no dependencies, works offline
+
+Open locally by double-clicking `linkedin.html`, or deploy it to any static host.
 
 ---
 
