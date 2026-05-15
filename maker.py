@@ -1328,13 +1328,32 @@ if not st.session_state.auth:
 
     # ── 2a. LANDING PAGE — index.html rendered inside Streamlit ──────────────
     if not st.session_state.show_portal:
-        # Suppress all Streamlit chrome so the full-page marketing site shows
+        # Pin the iframe to cover the full browser viewport so Streamlit's
+        # drag-handle overlay can't sit on top and block clicks.
         st.markdown("""
         <style>
-          #root > div:first-child { padding-top: 0 !important; }
-          footer { display: none !important; }
-          header[data-testid="stHeader"] { display: none !important; }
-          .block-container { padding: 0 !important; max-width: 100% !important; }
+          header[data-testid="stHeader"],
+          footer, #MainMenu { display: none !important; }
+          .stApp, .main, .block-container {
+            padding: 0 !important; margin: 0 !important;
+            max-width: 100% !important;
+            height: 100vh !important; overflow: hidden !important;
+          }
+          /* Stretch the component container to fill the full viewport */
+          [data-testid="stCustomComponentV1"] {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+            pointer-events: auto !important;
+          }
+          [data-testid="stCustomComponentV1"] iframe {
+            width: 100% !important;
+            height: 100% !important;
+            border: none !important;
+            pointer-events: auto !important;
+          }
         </style>""", unsafe_allow_html=True)
 
         # Load index.html from disk (never modified)
@@ -1342,9 +1361,8 @@ if not st.session_state.auth:
         with open(_idx_path, "r", encoding="utf-8") as _f:
             _idx_html = _f.read()
 
-        # In-memory only: redirect every "Launch App" / "Open the App" CTA so
-        # clicking from inside the iframe navigates the top-level Streamlit page
-        # to ?login=1, which Streamlit catches above and sets show_portal=True.
+        # In-memory only: redirect every CTA to ?login=1 so clicking
+        # navigates the top-level Streamlit page, setting show_portal=True.
         _login_url = "http://localhost:8501/?login=1"
         _idx_html = _idx_html.replace(
             'href="http://localhost:8501"',
@@ -1355,7 +1373,8 @@ if not st.session_state.auth:
             f"href='{_login_url}' target='_top'"
         )
 
-        _st_components.html(_idx_html, height=5800, scrolling=True)
+        # height=1 — the CSS above overrides it to 100vh
+        _st_components.html(_idx_html, height=1, scrolling=False)
         st.stop()
 
     # ── 2b. ACCESS PORTAL — shown after "Client Login" is clicked ─────────────
