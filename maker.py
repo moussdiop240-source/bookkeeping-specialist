@@ -1328,32 +1328,32 @@ if not st.session_state.auth:
 
     # ── 2a. LANDING PAGE — index.html rendered inside Streamlit ──────────────
     if not st.session_state.show_portal:
-        # Pin the iframe to cover the full browser viewport so Streamlit's
-        # drag-handle overlay can't sit on top and block clicks.
+        # Hide Streamlit chrome and unlock every container so the iframe
+        # can expand to its full height and the page scrolls naturally.
         st.markdown("""
         <style>
           header[data-testid="stHeader"],
           footer, #MainMenu { display: none !important; }
-          .stApp, .main, .block-container {
-            padding: 0 !important; margin: 0 !important;
-            max-width: 100% !important;
-            height: 100vh !important; overflow: hidden !important;
+
+          /* Unlock every Streamlit wrapper that clips or constrains height */
+          html, body,
+          .stApp,
+          [data-testid="stAppViewContainer"],
+          [data-testid="stMain"],
+          [data-testid="stMainBlockContainer"],
+          [data-testid="stVerticalBlock"],
+          [data-testid="stElementContainer"] {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
-          /* Stretch the component container to fill the full viewport */
-          [data-testid="stIFrame"],
-          [data-testid="stElementContainer"]:has([data-testid="stIFrame"]) {
-            position: fixed !important;
-            inset: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            z-index: 9999 !important;
-            pointer-events: auto !important;
-          }
+
           [data-testid="stIFrame"] iframe {
-            width: 100% !important;
-            height: 100% !important;
+            width: 100vw !important;
             border: none !important;
-            pointer-events: auto !important;
+            display: block !important;
           }
         </style>""", unsafe_allow_html=True)
 
@@ -1374,37 +1374,44 @@ if not st.session_state.auth:
             f"href='{_login_url}' target='_top'"
         )
 
-        # Inject: hide scrollbar + intercept anchor-link clicks.
-        # In an srcdoc iframe the base URL is the parent (localhost:8501), so
-        # href="#features" resolves to http://localhost:8501/#features and a
-        # plain click navigates the iframe rather than scrolling within it.
-        # The script below catches those clicks and calls scrollIntoView()
-        # instead, which is the standard smooth-scroll behaviour.
+        # Intercept anchor clicks so they scroll the parent Streamlit page.
+        # Injected before </body> so all links are in the DOM when it runs.
         _idx_html = _idx_html.replace(
-            '</head>',
-            '''<style>
-html{-ms-overflow-style:none;scrollbar-width:none}
-html::-webkit-scrollbar{display:none}
-</style>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
+            '</body>',
+            '''<script>
+(function () {
+  function scrollParent(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    try {
+      var p = window.parent;
+      var iframeOffset = window.frameElement
+        ? window.frameElement.getBoundingClientRect().top + p.pageYOffset
+        : 0;
+      var elTop = el.getBoundingClientRect().top + window.pageYOffset;
+      p.scrollTo({ top: iframeOffset + elTop, behavior: "smooth" });
+    } catch (err) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+
   document.querySelectorAll('a').forEach(function (a) {
     var raw = a.getAttribute("href") || "";
-    if (raw.startsWith("#")) {
-      a.addEventListener("click", function (e) {
-        var el = document.getElementById(raw.slice(1));
-        if (el) { e.preventDefault(); el.scrollIntoView({ behavior: "smooth" }); }
-      });
-    }
+    if (!raw.startsWith("#") || raw === "#") return;
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      scrollParent(raw.slice(1));
+    });
   });
-});
+})();
 </script>
-</head>''',
+</body>''',
             1
         )
 
-        # scrolling=True lets the page scroll inside the iframe.
-        _st_components.html(_idx_html, height=1, scrolling=True)
+        # height=9500 covers the full landing page (~8500 px of content).
+        # scrolling=False keeps a single scrollbar on the Streamlit page.
+        _st_components.html(_idx_html, height=9500, scrolling=False)
         st.stop()
 
     # ── 2b. ACCESS PORTAL — shown after "Client Login" is clicked ─────────────
