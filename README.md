@@ -81,6 +81,22 @@ Your financial data never leaves your computer. No cloud sync. No monthly SaaS s
 
 ## Quick Start
 
+### One-Click Launch (Recommended)
+
+Double-click **`launch_bookkeeper.bat`** in the project folder.
+
+It handles everything automatically:
+
+- Detects and activates your Python virtual environment (or uses system Python)
+- Verifies all dependencies via `requirements.txt`
+- Starts Ollama if it is not already running
+- Frees port 8501 if occupied
+- Opens the app in your browser automatically
+
+On first run it also creates an **AI Bookkeeper** shortcut on your Desktop with a custom icon so you can launch the app from there going forward.
+
+### Manual Launch
+
 ```
 1. Install Ollama from https://ollama.ai and pull the model:
    ollama pull llama3.2:1b
@@ -88,9 +104,8 @@ Your financial data never leaves your computer. No cloud sync. No monthly SaaS s
 2. Install dependencies:
    pip install -r requirements.txt
 
-3. Launch (Windows):
-   Double-click launch.bat
-   Or run: streamlit run maker.py
+3. Run:
+   streamlit run maker.py
 ```
 
 Then open http://localhost:8501 in your browser.
@@ -219,7 +234,7 @@ Not currently. Re-categorize the transaction in AI Categorization, then return t
 | RAM | 4 GB (8 GB recommended) |
 | Storage | 2 GB free (for AI model) |
 | Ollama | Latest stable release |
-| AI Model | llama3.2:1b (auto-downloaded by launch.bat) |
+| AI Model | llama3.2:1b (auto-downloaded by launch_bookkeeper.bat) |
 
 ---
 
