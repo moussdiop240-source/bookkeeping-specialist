@@ -92,6 +92,7 @@
       white-space: nowrap; flex-shrink: 0;
     }
     @media (max-width: 780px) { .nav-badge { display: none; } }
+    @media (max-width: 600px) { .nav-inner { padding: 0 16px; } .nav-logo-text { font-size: 0.9rem; } }
 
     /* ── Buttons ───────────────────────────────────────────────── */
     .btn {
@@ -488,7 +489,7 @@
 <nav>
   <div class="container nav-inner">
     <a href="#" class="nav-logo">
-      <span style="font-size:1.15rem">📊</span>
+      <img src="favicon.svg" width="22" height="22" alt="" style="flex-shrink:0;display:block;" />
       <span class="grad-text nav-logo-text">AI Bookkeeping Specialist</span>
       <span class="nav-badge">Sovereign Edition</span>
     </a>
