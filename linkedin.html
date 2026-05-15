@@ -80,12 +80,18 @@
       background: rgba(6,11,22,0.88); backdrop-filter: blur(24px) saturate(180%);
     }
     .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    .nav-logo { font-size: 1rem; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+    .nav-logo {
+      font-size: 1rem; font-weight: 800; display: flex; align-items: center;
+      gap: 10px; white-space: nowrap; flex-shrink: 0; min-width: 0;
+    }
+    .nav-logo-text { white-space: nowrap; }
     .nav-badge {
       font-size: 0.62rem; font-weight: 700; padding: 3px 9px; border-radius: 5px;
       background: rgba(0,200,150,0.12); border: 1px solid rgba(0,200,150,0.28);
       color: var(--teal); letter-spacing: 0.07em; text-transform: uppercase;
+      white-space: nowrap; flex-shrink: 0;
     }
+    @media (max-width: 780px) { .nav-badge { display: none; } }
 
     /* ── Buttons ───────────────────────────────────────────────── */
     .btn {
@@ -483,7 +489,7 @@
   <div class="container nav-inner">
     <a href="#" class="nav-logo">
       <span style="font-size:1.15rem">📊</span>
-      <span class="grad-text">AI Bookkeeping Specialist</span>
+      <span class="grad-text nav-logo-text">AI Bookkeeping Specialist</span>
       <span class="nav-badge">Sovereign Edition</span>
     </a>
     <a href="#demo" class="btn btn-primary">Request Private Demo →</a>
