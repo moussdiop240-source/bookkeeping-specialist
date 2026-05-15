@@ -1440,13 +1440,21 @@ if not st.session_state.auth:
   document.querySelectorAll('a').forEach(function (a) {
     var raw = a.getAttribute("href") || "";
 
-    // CTA buttons (Open the App, Get Started, etc.) — sandbox blocks all
-    // parent navigation from the iframe. Scroll to top so the user sees
-    // the real "Launch App →" link injected in the parent Streamlit page.
+    // CTA buttons (Open the App, Get Started, etc.).
+    // Sandbox blocks parent navigation, but allow-same-origin lets us reach
+    // into the parent DOM and click the real Streamlit button directly.
     if (raw.indexOf("localhost:8501") !== -1 && raw.indexOf("#") === -1) {
       a.addEventListener("click", function (e) {
         e.preventDefault();
-        try { window.parent.scrollTo({ top: 0, behavior: "smooth" }); } catch (err) {}
+        try {
+          var stBtn = window.parent.document.querySelector(
+            "[data-testid='stButton'] button"
+          );
+          if (stBtn) { stBtn.click(); }
+          else { window.parent.scrollTo({ top: 0, behavior: "smooth" }); }
+        } catch (err) {
+          window.parent.scrollTo({ top: 0, behavior: "smooth" });
+        }
       });
       return;
     }
