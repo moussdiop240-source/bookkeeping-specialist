@@ -135,7 +135,9 @@ Then open http://localhost:8501 in your browser.
 - Same Midnight Finance design system as the main landing page
 - Fully self-contained — no dependencies, works offline
 
-Open locally by double-clicking `linkedin.html`, or deploy it to any static host.
+**Live URL:** https://moussdiop240-source.github.io/bookkeeping-specialist/linkedin.html
+
+Open locally by double-clicking `linkedin.html`, or share the live URL directly on LinkedIn.
 
 ---
 
