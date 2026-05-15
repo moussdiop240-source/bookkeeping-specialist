@@ -12,6 +12,7 @@ clients/
 # Screenshots and test artifacts (tracked ones are explicitly allowed below)
 *.png
 !screenshot_launcher.png
+!screenshot_app.png
 streamlit_log.txt
 
 # Python
